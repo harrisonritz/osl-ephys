@@ -57,11 +57,11 @@ setup(name=name,
       zip_safe=False,
       entry_points={
           'console_scripts': [
-              'osl_maxfilter = osl.maxfilter.maxfilter:main',
-              'osl_ica_label = osl.preprocessing.ica_label:main',
-              'osl_ica_apply = osl.preprocessing.ica_label:apply',
-              'osl_preproc = osl.preprocessing.batch:main',
-              'osl_func = osl.utils.run_func:main',
+              'osl_maxfilter = osl_ephys.maxfilter.maxfilter:main',
+              'osl_ica_label = osl_ephys.preprocessing.ica_label:main',
+              'osl_ica_apply = osl_ephys.preprocessing.ica_label:apply',
+              'osl_preproc = osl_ephys.preprocessing.batch:main',
+              'osl_func = osl_ephys.utils.run_func:main',
           ]},
 
       packages=['osl_ephys', 'osl_ephys.tests', 'osl_ephys.report', 'osl_ephys.maxfilter',
