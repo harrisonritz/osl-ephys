@@ -1,5 +1,5 @@
-osl-ephys Toolbox
-====================
+OHBA Software Library for the Analysis of Electrophysiology Data (``osl-ephys``)
+================================================================================
 
 This package contains models for analysing electrophysiology data. It builds on top of the widely used MNE-Python package and contains unique analysis tools for M/EEG sensor and source space analysis. Specifically, it contains tools for:
 
@@ -60,7 +60,7 @@ Contents
    Install <install>
    Documentation <documentation>
    FAQ <faq>
-   API Reference <autoapi/_ephys/index>
+   API Reference <autoapi/osl_ephys/index>
 
 
 Indices and tables
