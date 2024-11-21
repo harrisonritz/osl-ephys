@@ -1335,7 +1335,7 @@ def save_polhemus_fif(raw, subjects_dir,subject):
     """
     # Check the input is a raw data structure
     if not isinstance(raw, io.BaseRaw):
-        print("The object is not a raw data structure.")
+        log_or_print("The object is not a raw data structure.")
         return
 
     # Initialize empty lists to store the 3D coordinates
@@ -1346,7 +1346,7 @@ def save_polhemus_fif(raw, subjects_dir,subject):
 
     # Check if there is digitisation information
     if not raw.info["dig"]:
-         print("Error: raw.info['dig'] is empty. Exiting function.")
+         log_or_print("Error: raw.info['dig'] is empty. Exiting function.")
          return 
 
     else:
@@ -1375,5 +1375,5 @@ def save_polhemus_fif(raw, subjects_dir,subject):
     if headshape.any():
         np.savetxt(os.path.join(path_to_save, "polhemus_headshape.txt"), headshape.T, delimiter=' ', fmt='%.40e')
 
-    print("Saved files to {}".format(path_to_save))
+    log_or_print("Saved files to {}".format(path_to_save))
 
