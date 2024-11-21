@@ -4,6 +4,7 @@
 
 # Authors: Mark Woolrich <mark.woolrich@ohba.ox.ac.uk>
 #          Chetan Gohil <chetan.gohil@psych.ox.ac.uk>
+#          Rob Seymour <rob.seymour@psych.ox.ac.uk>
 
 import os
 import os.path as op
@@ -24,6 +25,7 @@ from scipy.spatial import KDTree
 from mne import Transform
 from mne.transforms import read_trans
 from mne.surface import write_surface
+from mne import io
 
 from numba import cfunc, carray
 from numba.types import intc, intp, float64, voidptr
@@ -1316,3 +1318,62 @@ def extract_rhino_files(old_subjects_dir, new_subjects_dir, subjects="all", excl
             log_or_print("******************************" + "*" * len(str(reportdir)))
             log_or_print(f"* REMEMBER TO CHECK REPORT: {reportdir} *")
             log_or_print("******************************" + "*" * len(str(reportdir)))
+
+def save_polhemus_fif(raw, subjects_dir,subject):
+    """Save the polhemus information (nasion, LPA, RPA, headshape) from a raw MNE file
+
+    Files will be in subjects_dir/subject/coreg.
+
+    Parameters
+    ----------
+    raw : raw MNE data structure
+        Data loaded into MNE with preload=True
+    subjects_dir : string
+        Directory containing the subject directories.
+    subject : string
+        Subject directory name to put the coregistration files in.
+    """
+    # Check the input is a raw data structure
+    if not isinstance(raw, io.BaseRaw):
+        print("The object is not a raw data structure.")
+        return
+
+    # Initialize empty lists to store the 3D coordinates
+    nasion      = np.empty((0, 3))
+    LPA         = np.empty((0, 3))
+    RPA         = np.empty((0, 3))
+    headshape   = np.empty((0, 3))  
+
+    # Check if there is digitisation information
+    if not raw.info["dig"]:
+         print("Error: raw.info['dig'] is empty. Exiting function.")
+         return 
+
+    else:
+    # Iterate through the digitalization points - the *1000 is for m to mm conversion
+        for p in raw.info["dig"]:
+            if p["kind"] == 1 and p["ident"] == 1:
+                LPA = np.append(LPA,(p["r"]*1000))  # Append the 3D coordinates of LPA
+            elif p["kind"] == 1 and p["ident"] == 2:
+                nasion = np.append(nasion,p["r"]*1000) # Append the 3D coordinates of nasion
+            elif p["kind"] == 1 and p["ident"] == 3:
+                RPA = np.append(RPA,(p["r"]*1000))  # Append the 3D coordinates of RPA
+            elif p["kind"] == 4:
+                headshape = np.vstack([headshape, p["r"]*1000])  # Stack headshape points
+
+    # Get the location to save the files to
+    coreg_filenames = get_rhino_files(subjects_dir, subject)
+    path_to_save    = coreg_filenames['coreg']['basedir']
+
+    # Save to .txt files
+    if nasion.any():
+        np.savetxt(os.path.join(path_to_save, "polhemus_nasion.txt"), nasion.T, delimiter=' ', fmt='%.40e')
+    if LPA.any():
+        np.savetxt(os.path.join(path_to_save, "polhemus_LPA.txt"), LPA.T, delimiter=' ', fmt='%.40e')
+    if RPA.any():
+        np.savetxt(os.path.join(path_to_save, "polhemus_RPA.txt"), RPA.T, delimiter=' ', fmt='%.40e')
+    if headshape.any():
+        np.savetxt(os.path.join(path_to_save, "polhemus_headshape.txt"), headshape.T, delimiter=' ', fmt='%.40e')
+
+    print("Saved files to {}".format(path_to_save))
+
