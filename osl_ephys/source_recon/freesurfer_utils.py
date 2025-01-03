@@ -8,7 +8,7 @@ import os
 import subprocess
 import os.path as op
 
-from mne import setup_source_space, write_source_spaces, read_source_spaces
+from mne import setup_source_space, write_source_spaces, read_source_spaces, bem
 from osl_ephys.utils.logger import log_or_print
 
 def setup_freesurfer(directory):
@@ -116,6 +116,9 @@ def get_freesurfer_files(subjects_dir, subject):
         "coreg_trans": op.join(coreg_dir, "coreg-trans.fif"),
         "coreg_html": op.join(coreg_dir, "coreg.html"),
         "source_space": op.join(coreg_dir, "space-src.fif"),
+        # "stc": op.join(coreg_dir, "stc-data", f"{subject}-lh.stc"),
+        # "filters_plot_cov": op.join(coreg_dir, "noise_cov.png"),
+        # "filters_plot_svd": op.join(coreg_dir, "noise_svd.png"),
     }
         
         
@@ -182,7 +185,50 @@ def get_coreg_filenames(subjects_dir, subject):
     return fs_files["coreg"]
 
 
-def make_fsaverage_src(subjects_dir, ico=5):
+def recon_all(
+    smri_file,
+    subjects_dir,
+    subject,
+    ):
+    
+    os.environ["SUBJECTS_DIR"] = subjects_dir
+    
+    move_flag = False
+    if os.path.exists(os.path.join(subjects_dir, subject)):
+        log_or_print(f'Temporarily saving data to {op.join(subjects_dir, subject + "_freesurfer_temp")} because subject {subject} already exists')
+        cmd =  ['recon-all', '-i', smri_file, '-s', subject + '_freesurfer_temp', '-all'] 
+        move_flag = True
+    else:
+        cmd = ['recon-all', '-i', smri_file, '-s', subject, '-all'] 
+    
+    try:
+        subprocess.run(cmd, check=True, env=os.environ)
+        log_or_print(f"recon-all completed successfully for subject {subject}")
+    except subprocess.CalledProcessError as e:
+        log_or_print(f"Error running recon-all for subject {subject}: {e}")
+
+    if move_flag:
+        log_or_print(f'Moving data from {op.join(subjects_dir, subject + "_freesurfer_temp")} to {op.join(subjects_dir, subject)}')
+        os.rename(op.join(subjects_dir, subject + "_freesurfer_temp"), op.join(subjects_dir, subject))
+
+
+def make_watershed_bem(
+    outdir,
+    subject,
+    **kwargs,
+    ):
+    """Wrapper for :py:func:`mne.bem.make_watershed_bem <mne.bem.make_watershed_bem>` making a watershed BEM with FreeSurfer."""   
+    
+    check_freesurfer()
+    
+    bem.make_watershed_bem(
+        subject=subject,
+        subjects_dir=outdir,
+        **kwargs
+    )
+
+
+def make_fsaverage_src(subjects_dir, spacing='oct6'):
     subject = 'fsaverage'
     src_fname = get_coreg_filenames(subjects_dir, subject)['source_space']
     
@@ -190,12 +236,7 @@ def make_fsaverage_src(subjects_dir, ico=5):
         src = setup_source_space(
         subjects_dir=subjects_dir,
         subject=subject,
-        spacing="oct6",
+        spacing=spacing,
         add_dist="patch",
-        ico=ico,
         )
         write_source_spaces(src_fname, src)
-    else:
-        src = read_source_spaces(src_fname) 
-        
-    return src

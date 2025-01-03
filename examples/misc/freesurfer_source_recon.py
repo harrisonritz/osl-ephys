@@ -55,39 +55,45 @@ for sub in subjects_to_do:
                 preproc_fif_files.append(preproc_fif_file)
                 sflip_parc_files.append(sflip_parc_file)
 
+# ----------------
+# Run FreeSurfer recon-all and make watershed BEM
+for subject, smri_file in zip(subjects, smri_files):
+    source_recon.recon_all(smri_file, recon_dir, subject)
+    
+    source_recon.make_watershed_bem(recon_dir, subject)
+
+
 # -------------------------------------
 # Coreg and Source recon and Parcellate
 
 config = """
     source_recon:
-    - recon_all: 
-    - make_watershed_bem:
     - coregister:
         mode: mne
         nasion_weight; 2.0
     - forward_model:
         model: Single Layer
-        mode: mne
-        ico: 5
+        mode: surface
+        kwargs: {ico: 4}
+        gridstep: 8
     - minimum_norm:
         method: eLORETA
-        rank: 60
+        rank: 70
         loose: 0.2
         lambda2: 0.1
         morph: fsaverage
     - parcellate:
-      
+        - parcellation_file: aparc
+        - method: pca_flip
+        - orthogonalisation: symmetric
+        - source_method: minimum_norm
 """
 
-# parcellation_file: fmri_d100_parcellation_with_PCC_reduced_2mm_ss5mm_ds8mm.nii.gz
-# parcellation_file: Schaefer2018_100Parcels_7Networks_order_FSLMNI152_2mm_4d_ds8.nii.gz
-# parcellation_file: HarvOxf-sub-Schaefer100-combined-2mm_4d_ds8.nii.gz
 
 source_recon.run_src_batch(
     config,
     src_dir=recon_dir,
     subjects=subjects,
     preproc_files=preproc_fif_files,
-    smri_files=smri_files,
-    
+    smri_files=smri_files,   
 )

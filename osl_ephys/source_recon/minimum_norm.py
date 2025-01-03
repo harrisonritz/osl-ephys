@@ -15,6 +15,7 @@ import mne
 from mne.coreg import Coregistration
 from mne.io import read_info
 import numpy as np
+import matplotlib.pyplot as plt
 
 from . import rhino, beamforming, parcellation, sign_flipping, freesurfer_utils
 from ..report import src_report
@@ -33,15 +34,12 @@ def minimum_norm(
     chantypes,
     method,
     rank,
-    morph="fsaverage",
+    morph=False,
     lambda2=0.1,
     depth=0.8,
     loose='auto',
-    # freq_range=None,
-    # weight_norm="nai",
+    freq_range=None,
     pick_ori="normal",
-    # reg=0,
-    reportdir=None,
     ):
     """Run minimum norm source localization.
     
@@ -90,36 +88,52 @@ def minimum_norm(
     fwd_fname = freesurfer_utils.get_freesurfer_files(outdir, subject)['fwd_model']
     coreg_files = freesurfer_utils.get_coreg_filenames(outdir, subject)
     
-    raw = mne.io.read_raw(preproc_file, preload=True)
-    noise_cov = calc_noise_cov(raw, rank, chantypes)
+    if epoch_file is not None:
+        data = mne.read_epochs(epoch_file, preload=True)
+    else:
+        data = mne.io.read_raw(preproc_file, preload=True)
+    
+    # Bandpass filter
+    if freq_range is not None:
+        logger.info(f"bandpass filtering: {freq_range[0]}-{freq_range[1]} Hz")
+        data = data.filter(
+            l_freq=freq_range[0],
+            h_freq=freq_range[1],
+            method="iir",
+            iir_params={"order": 5, "ftype": "butter"},
+        )
+    
+    
+    if isinstance(data, mne.io.Raw):
+        data_cov = mne.compute_raw_covariance(data, method="empirical", rank=rank)
+    else:
+        data_cov = mne.compute_covariance(data, method="empirical", rank=rank)
+    noise_cov = calc_noise_cov(data, rank, chantypes)
     
     fwd = mne.read_forward_solution(fwd_fname)
-    inverse_operator = mne.minimum_norm.make_inverse_operator(raw.info, fwd, noise_cov, rank=rank, loose=loose, depth=depth)
+    inverse_operator = mne.minimum_norm.make_inverse_operator(data.info, fwd, noise_cov, loose=loose, depth=depth)
     del fwd
     
     log_or_print(f"*** Applying {method} inverse solution ***")
-    stc_raw = mne.minimum_norm.apply_inverse_raw(raw, inverse_operator, lambda2=lambda2, method=method, pick_ori=pick_ori)
+
+    if epoch_file is not None:      
+        stc = mne.minimum_norm.apply_inverse_epochs(data, inverse_operator, lambda2=lambda2, method=method, pick_ori=pick_ori)    
+    else:
+        stc = mne.minimum_norm.apply_inverse_raw(data, inverse_operator, lambda2=lambda2, method=method, pick_ori=pick_ori)
     
-    if epoch_file is not None:
-        epochs = mne.read_epochs(epoch_file, preload=True)
-        stc_epochs = mne.minimum_norm.apply_inverse_epochs(epochs, inverse_operator, lambda2=lambda2, method=method, pick_ori=pick_ori)    
-        
     if morph:
         src_from = mne.read_source_spaces(coreg_files['source_space'])
-        morph = morph_surface(outdir, subject, src_from, src_to=morph)
-        stc_raw = morph.apply(stc_raw)
+        morph = morph_surface(outdir, subject, src_from, subject_to=morph)
+        morph.save(op.join(outdir, subject, "mne_src", morph), overwrite=True)
+        stc = morph.apply(stc)
         
-        if epoch_file is not None:
-            stc_epochs = morph.apply(stc_epochs)
-            
-    stc_raw.save(op.join(outdir, f"{subject}_src-raw"), overwrite=True)
-    
     if epoch_file is not None:
-        stc_epochs.save(op.join(outdir, f"{subject}_src-epo"), overwrite=True)
-
+        stc.save(op.join(outdir, subject, "mne_src", "src-epo"), overwrite=True)
+    else:
+        stc.save(op.join(outdir, subject, "mne_src", "src-raw"), overwrite=True)
+        
     
-    
-def calc_noise_cov(raw, data_cov_rank, chantypes):
+def calc_noise_cov(data, data_cov_rank, chantypes):
     """Calculate noise covariance.
     
     Parameters
@@ -138,16 +152,18 @@ def calc_noise_cov(raw, data_cov_rank, chantypes):
     # variance of each sensor type (e.g. mag, grad, eeg.)
     log_or_print("*** Calculating noise covariance ***")
     
-    raw = raw.pick(chantypes)
-    data_cov = mne.compute_raw_covariance(
-        raw, method="empirical", rank=data_cov_rank
-    )
+    data = data.pick(chantypes)
+    if isinstance(data, mne.io.Raw):
+        data_cov = mne.compute_raw_covariance(data, method="empirical", rank=data_cov_rank)
+    else:
+        data_cov = mne.compute_covariance(data, method="empirical", rank=data_cov_rank)
+    
     n_channels = data_cov.data.shape[0]
     noise_cov_diag = np.zeros(n_channels)
     
     for type in chantypes:
         # Indices of this channel type
-        type_raw = raw.copy().pick(type, exclude="bads")
+        type_raw = data.copy().pick(type, exclude="bads")
         inds = []
         for chan in type_raw.info["ch_names"]:
             inds.append(data_cov.ch_names.index(chan))
@@ -155,16 +171,16 @@ def calc_noise_cov(raw, data_cov_rank, chantypes):
         # Mean variance of channels of this type
         variance = np.mean(np.diag(data_cov.data)[inds])
         noise_cov_diag[inds] = variance
-        print(f"variance for chantype {type} is {variance}")
+        log_or_print(f"variance for chantype {type} is {variance}")
 
-    bads = [b for b in raw.info["bads"] if b in data_cov.ch_names]
+    bads = [b for b in data.info["bads"] if b in data_cov.ch_names]
     noise_cov = mne.Covariance(
-        noise_cov_diag, data_cov.ch_names, bads, raw.info["projs"], nfree=1e10
+        noise_cov_diag, data_cov.ch_names, bads, data.info["projs"], nfree=1e10
     )
     return noise_cov
 
 
-def morph_surface(subjects_dir, subject, src_from, src_to="fsaverage", ico=None):
+def morph_surface(subjects_dir, subject, src_from, subject_to="fsaverage", src_to=None, spacing=None):
     """Morph source space to another subject's surface.
     
     Parameters
@@ -181,18 +197,19 @@ def morph_surface(subjects_dir, subject, src_from, src_to="fsaverage", ico=None)
     
     # get source spacing from src_to
     
-    if src_to == "fsaverage":
+    if subject_to == "fsaverage" and not op.exists(freesurfer_utils.get_coreg_filenames(subjects_dir, "fsaverage")['source_space']):
         # estimate source spacing from src_from
-        if 'ico' not in src_from.info['command_line']:
+        if 'spacing' not in src_from.info['command_line']:
             src_to = freesurfer_utils.make_fsaverage_src(subjects_dir) # use default
         else:
-            ico = int(src_from.info['command_line'].split('ico=')[1].split(', ')[0])
-            src_to = freesurfer_utils.make_fsaverage_src(subjects_dir, ico)
+            spacing = int(src_from.info['command_line'].split('spacing=')[1].split(', ')[0])
+            src_to = freesurfer_utils.make_fsaverage_src(subjects_dir, spacing)
         
     morph = mne.compute_source_morph(
         src_from,
         subject_from=subject,
-        subject_to=src_to,
+        subject_to=subject_to,
+        src_to=src_to,
         subjects_dir=subjects_dir,
 
     )
