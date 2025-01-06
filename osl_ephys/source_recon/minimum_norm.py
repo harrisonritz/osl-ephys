@@ -29,17 +29,12 @@ logger = logging.getLogger(__name__)
 def minimum_norm(
     outdir,
     subject,
-    preproc_file,
-    epoch_file,
+    data,
     chantypes,
     method,
     rank,
-    morph=False,
-    lambda2=0.1,
-    depth=0.8,
-    loose='auto',
-    freq_range=None,
-    pick_ori="normal",
+    depth,
+    loose,
     ):
     """Run minimum norm source localization.
     
@@ -49,10 +44,8 @@ def minimum_norm(
         Output directory.
     subject : str
         Subject ID.
-    preproc_file : str  
-        Preprocessed file.
-    epoch_file : str
-        Epoch file.
+    data : mnep.io.Raw, mne.Epochs  
+        Preprocessed data.
     chantypes : list
         List of channel types to include.
     method : str
@@ -61,77 +54,93 @@ def minimum_norm(
         Rank of the data covariance matrix.
     morph : bool, str
         Morph method, e.g. fsaverage. Can be False.
-    lambda2 : float
-        Regularization parameter.
     depth : float
         Depth weighting.
     loose : float
         Loose parameter.
-    freq_range : list
-        Band pass filter applied before source estimation.
-    weight_norm : str
-        Weight normalization.
-    pick_ori : str
-        Orientation to pick.
     reg : float
         Regularization parameter.
     reportdir : str
         Report directory.
-        
-        """
-    
-    if preproc_file is None:
-        preproc_file = epoch_file
+    """
 
     log_or_print("*** RUNNING MNE SOURCE LOCALIZATION ***")
     
     fwd_fname = freesurfer_utils.get_freesurfer_files(outdir, subject)['fwd_model']
     coreg_files = freesurfer_utils.get_coreg_filenames(outdir, subject)
     
-    if epoch_file is not None:
-        data = mne.read_epochs(epoch_file, preload=True)
-    else:
-        data = mne.io.read_raw(preproc_file, preload=True)
-    
-    # Bandpass filter
-    if freq_range is not None:
-        logger.info(f"bandpass filtering: {freq_range[0]}-{freq_range[1]} Hz")
-        data = data.filter(
-            l_freq=freq_range[0],
-            h_freq=freq_range[1],
-            method="iir",
-            iir_params={"order": 5, "ftype": "butter"},
-        )
-    
-    
-    if isinstance(data, mne.io.Raw):
-        data_cov = mne.compute_raw_covariance(data, method="empirical", rank=rank)
-    else:
-        data_cov = mne.compute_covariance(data, method="empirical", rank=rank)
     noise_cov = calc_noise_cov(data, rank, chantypes)
     
     fwd = mne.read_forward_solution(fwd_fname)
+    log_or_print(f"*** Making {method} inverse solution ***")
     inverse_operator = mne.minimum_norm.make_inverse_operator(data.info, fwd, noise_cov, loose=loose, depth=depth)
-    del fwd
+      
+    log_or_print(f"*** Saving {method} inverse operator ***")
+    mne.minimum_norm.write_inverse_operator(coreg_files['inverse_operator'].format(method), inverse_operator, overwrite=True)
+    return inverse_operator
+    
+
+def apply_inverse_solution(
+    outdir,
+    subject,
+    data,
+    method,
+    lambda2,
+    pick_ori,
+    inverse_operator=None,
+    morph="fsaverage",
+    save=False,
+    ):
+    """ Apply previously computed minimum norm inverse solution.
+    
+    Parameters
+    ----------
+    outdir : str
+        Output directory.
+    subject : str
+        Subject ID.
+    data : mne.io.Raw, mne.Epochs
+        Raw or Epochs object.
+    inverse_operator : mne.minimum_norm.InverseOperator
+        Inverse operator.
+    method : str
+        Inverse method.
+    lambda2 : float
+        Regularization parameter.
+    pick_ori : str
+        Orientation to pick.
+    morph : bool, str
+        Morph method, e.g. fsaverage. Can be False.
+    save : bool
+        Save source estimate (default: False).
+    """
+    
+    coreg_files = freesurfer_utils.get_coreg_filenames(outdir, subject)
+    if inverse_operator is None:
+        inverse_operator = mne.minimum_norm.read_inverse_operator(coreg_files['inverse_operator'].format(method))
     
     log_or_print(f"*** Applying {method} inverse solution ***")
 
-    if epoch_file is not None:      
+    if isinstance(data, mne.Epochs):
         stc = mne.minimum_norm.apply_inverse_epochs(data, inverse_operator, lambda2=lambda2, method=method, pick_ori=pick_ori)    
     else:
         stc = mne.minimum_norm.apply_inverse_raw(data, inverse_operator, lambda2=lambda2, method=method, pick_ori=pick_ori)
     
     if morph:
+        log_or_print(f"*** Morphing source estimate to {morph} ***")
         src_from = mne.read_source_spaces(coreg_files['source_space'])
         morph = morph_surface(outdir, subject, src_from, subject_to=morph)
         morph.save(op.join(outdir, subject, "mne_src", morph), overwrite=True)
         stc = morph.apply(stc)
-        
-    if epoch_file is not None:
-        stc.save(op.join(outdir, subject, "mne_src", "src-epo"), overwrite=True)
-    else:
-        stc.save(op.join(outdir, subject, "mne_src", "src-raw"), overwrite=True)
-        
+    
+    if save:     
+        log_or_print(f"*** Saving Source estimate ***")   
+        if isinstance(data, mne.Epochs):
+            stc.save(op.join(outdir, subject, "mne_src", "src-epo"), overwrite=True)
+        else:
+            stc.save(op.join(outdir, subject, "mne_src", "src-raw"), overwrite=True)
+    return stc
+    
     
 def calc_noise_cov(data, data_cov_rank, chantypes):
     """Calculate noise covariance.
@@ -175,7 +184,7 @@ def calc_noise_cov(data, data_cov_rank, chantypes):
 
     bads = [b for b in data.info["bads"] if b in data_cov.ch_names]
     noise_cov = mne.Covariance(
-        noise_cov_diag, data_cov.ch_names, bads, data.info["projs"], nfree=1e10
+        noise_cov_diag, data_cov.ch_names, bads, data.info["projs"], nfree=data.n_times
     )
     return noise_cov
 

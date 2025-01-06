@@ -20,7 +20,7 @@ from mne.io import read_info
 import numpy as np
 
 from . import rhino, beamforming, parcellation, sign_flipping, freesurfer_utils
-from .minimum_norm import minimum_norm as minimum_norm_estimate
+from .minimum_norm import minimum_norm, apply_inverse_solution as minimum_norm_estimate, apply_inverse_solution
 from ..report import src_report
 from ..utils.logger import log_or_print
 
@@ -343,6 +343,7 @@ def coregister(
             
     elif mode=="mne" or mode=='freesurfer':
         coreg_files = freesurfer_utils.get_coreg_filenames(outdir, subject)
+        coreg_filename = coreg_files['coreg_html']
         
         def save_coreg_html(filename):
             fig = mne.viz.plot_alignment(info, trans=coreg.trans, **plot_kwargs)
@@ -366,9 +367,11 @@ def coregister(
         if n_init is None:
             n_init = 20
         
-        coreg.fit_fiducials(verbose=True)
+        fiducials_kwargs = kwargs.pop("fit_fiducials", {})
+        coreg.fit_fiducials(**fiducials_kwargs)
         
-        coreg.fit_icp(n_iterations=n_init, verbose=True, **kwargs)
+        icp_kwargs = kwargs.pop("fit_icp", {})
+        coreg.fit_icp(n_iterations=n_init, **icp_kwargs)
         #coreg.omit_head_shape_points(distance=1e-3)
         
         plot_kwargs = dict(
@@ -411,6 +414,15 @@ def coregister(
                 "coreg_plot": coreg_filename,
             },
         )
+        
+        if mode=="mne" or mode=='freesurfer':
+            src_report.add_to_data(
+            f"{reportdir}/{subject}/data.pkl",
+            {
+                "fiducials_kwargs": fiducials_kwargs,
+                "icp_kwargs": icp_kwargs,
+            }
+            )
 
 
 def forward_model(
@@ -470,16 +482,22 @@ def forward_model(
         )
         mne.write_source_spaces(filenames['source_space'], src, overwrite=True)
         
-        if model == "Single Layer":
-            conductivity = (0.3,)  # for single layer
-        elif model == "Triple Layer":
-            conductivity = (0.3, 0.006, 0.3)  # for three layers
+        conductivity = kwargs.pop("conductivity", None)
+        if conductivity is None:
+            if model == "Single Layer":
+                conductivity = (0.3,)  # for single layer
+            elif model == "Triple Layer":
+                conductivity = (0.3, 0.006, 0.3)  # for three layers
+            
+        
+        ico = kwargs.pop("ico", 4)
+        mindist = kwargs.pop("mindist", 0)
         
         model = mne.make_bem_model(
                     subjects_dir=outdir, 
                     subject=subject, 
                     conductivity=conductivity,
-                    **kwargs
+                    ico=ico,
         )
         
         bem = mne.make_bem_solution(model)
@@ -491,10 +509,7 @@ def forward_model(
             trans=trans,
             src=src,
             bem=bem,
-            meg=True,
-            eeg=False,
-            mindist=5.0,
-            verbose=True,
+            mindist=mindist,
         )
         mne.write_forward_solution(fwd_fname, fwd, overwrite=True)
         log_or_print("*** FINISHED SURFACE BASED FORWARD MODEL ***")
@@ -511,6 +526,16 @@ def forward_model(
                 "eeg": eeg,
             },
         )
+        
+        if mode == 'surface' or mode == 'surf':
+            src_report.add_to_data(
+            f"{reportdir}/{subject}/data.pkl",
+            {
+                "conductivity": conductivity,
+                "ico": ico,
+                "mindist": mindist,
+            }
+            )
 
 
 # -------------------------------------
@@ -628,9 +653,13 @@ def minimum_norm(
     subject,
     preproc_file,
     epoch_file,
+    source_method,
     chantypes,
-    method,
     rank,
+    depth,
+    loose,
+    reg,
+    pick_ori,
     freq_range=None,
     reportdir=None,
     **kwargs,
@@ -646,44 +675,69 @@ def minimum_norm(
     preproc_file : str
         Path to the preprocessed fif file.
     epoch_file : str
-        Path to epoched preprocessed fif file.  
+        Path to epoched preprocessed fif file.
+    source_method : str
+        Method to use in the source localization. E.g., 'MNE' or 'dSPM'.  
     chantypes : list
         List of channel types to include.
     method : str
         Method to use in the source localization.
     rank : int
         Rank of the noise covariance matrix.
+    depth : float
+        Depth weighting.
+    reg : float
+        Regularization parameter for the minimum norm estimate.
+    pick_ori : str
+        Orientation of the dipoles.
     freq_range : list, optional
         Lower and upper band to bandpass filter before beamforming.
         If None, no filtering is done
     reportdir : str, optional
         Path to report directory.
     """
-
-    logger.info("MNE source localize")
     
+    if epoch_file is not None:
+        data = mne.read_epochs(epoch_file, preload=True)
+    else:
+        data = mne.io.read_raw(preproc_file, preload=True)
+    
+    # Bandpass filter
+    if freq_range is not None:
+        logger.info(f"bandpass filtering: {freq_range[0]}-{freq_range[1]} Hz")
+        data = data.filter(
+            l_freq=freq_range[0],
+            h_freq=freq_range[1],
+            method="iir",
+            iir_params={"order": 5, "ftype": "butter"},
+        )
+    
+    logger.info("MNE source localize")
     minimum_norm_estimate(
         outdir,
         subject,
-        preproc_file,
-        epoch_file,
+        data,
         chantypes,
-        method,
+        source_method,
         rank,
-        freq_range=freq_range,
+        depth,
+        loose,
         **kwargs,
     )
     
     if reportdir is not None:
-
         # Save info for the report
         src_report.add_to_data(
             f"{reportdir}/{subject}/data.pkl",
             {
                 "minimum_norm": True,
                 "chantypes": chantypes,
-                "method": method,
+                "method": source_method,
                 "rank": rank,
+                "depth": depth,
+                "loose": loose,
+                "lambda2": reg,
+                "pick_ori": pick_ori,
                 "freq_range": freq_range,
             },
         )
@@ -699,9 +753,10 @@ def parcellate(
     orthogonalisation,
     source_method='lcmv',
     spatial_resolution=None,
-    reference_brain="mni",
+    reference_brain="mni/fsaverage",
     extra_chans="stim",
     reportdir=None,
+    **kwargs,
 ):
     """Wrapper function for parcellation.
 
@@ -721,6 +776,10 @@ def parcellate(
         Method to use in the parcellation.
     orthogonalisation : bool
         Should we do orthogonalisation?
+    lambda2 : float
+        The regularisation parameter for the minimum norm estimate.
+    pick_ori : str
+        Orientation of the dipoles, used for minimum_norm.
     source_method : str, optional
         Method used for source reconstruction. Can be 'lcmv' or 'mne'.
     spatial_resolution : int, optional
@@ -728,7 +787,10 @@ def parcellate(
         (must be an integer, or will be cast to nearest int). If None, then
         the gridstep used in coreg_filenames['forward_model_file'] is used.
     reference_brain : str, optional
-        'mni' indicates that the reference_brain is the stdbrain in MNI space.
+        'mni' indicates that the reference_brain is the stdbrain in MNI space (volumetric).
+        'fsaverage' indicates that the reference_brain is the fsaverage subject (surface).
+        'mni/fsaverage' indicates that the reference_brain depends on the source_method 
+            ('mni' for lcmv, 'fsaverage' for mne).
         'mri' indicates that the reference_brain is the subject's sMRI in the
         scaled native/mri space.
         'unscaled_mri' indicates that the reference_brain is the subject's
@@ -752,31 +814,35 @@ def parcellate(
     else:
         data = mne.io.read_raw_fif(preproc_file, preload=True)
 
-    # beamforming is applied in place, whereas linear inverse methods are loaded from disk.
-    if source_method == 'lcmv' or source_method == 'beamform':
-        if reportdir is None:
-            raise ValueError(
+    if reportdir is None:
+        raise ValueError(
             "This function can only be used when a report was generated "
-            "when beamforming. Please use beamform_and_parcellate."
-            )
-            
-        # Get settings passed to the beamform wrapper
-        report_data = pickle.load(open(f"{reportdir}/{subject}/data.pkl", "rb"))
-        freq_range = report_data.pop("freq_range")
-        chantypes = report_data.pop("chantypes")
-        if isinstance(chantypes, str):
-            chantypes = [chantypes]
-            
-        # Bandpass filter
-        if freq_range is not None:
-            logger.info(f"bandpass filtering: {freq_range[0]}-{freq_range[1]} Hz")
-            data = data.filter(
-                l_freq=freq_range[0],
-                h_freq=freq_range[1],
-                method="iir",
-                iir_params={"order": 5, "ftype": "butter"},
+            "when using source estimation (beamforming/minimum_norm). Please use beamform_and_parcellate"
+            "or minimum_norm_and_parcellate."
             )
 
+    # Get settings passed to the beamform/minimum_norm wrapper
+    report_data = pickle.load(open(f"{reportdir}/{subject}/data.pkl", "rb"))
+    freq_range = report_data.pop("freq_range")
+    chantypes = report_data.pop("chantypes")
+    if isinstance(chantypes, str):
+        chantypes = [chantypes]
+        
+    # Bandpass filter
+    if freq_range is not None:
+        logger.info(f"bandpass filtering: {freq_range[0]}-{freq_range[1]} Hz")
+        data = data.filter(
+            l_freq=freq_range[0],
+            h_freq=freq_range[1],
+            method="iir",
+            iir_params={"order": 5, "ftype": "butter"},
+        )
+
+    # source recon is applied in place
+    if source_method == 'lcmv' or source_method == 'beamform':
+        if reference_brain == 'mni/fsaverage':
+            reference_brain = 'mni'
+        
         # Pick channels
         chantype_data = data.copy().pick(chantypes)
     
@@ -806,18 +872,20 @@ def parcellate(
             working_dir=f"{outdir}/{subject}/parc",
         )
         
-    elif source_method=='minimum_norm':   
-        if reportdir is not None:
-            report_data = pickle.load(open(f"{reportdir}/{subject}/data.pkl", "rb"))
-            freq_range = report_data.pop("freq_range")
-            chantypes = report_data.pop("chantypes")
-            if isinstance(chantypes, str):
-                chantypes = [chantypes]
-        else:
-            freq_range = [np.max([data.info['highpass'], 0]), np.min([data.info['lowpass'], 100])]
-            
-            
-        parcel_data = parcellation.surf_parcellate_timeseries(outdir, subject, preproc_file, epoch_file, method, parcellation_file)
+    elif source_method=='minimum_norm':           
+        if reference_brain == 'mni/fsaverage':
+            reference_brain = 'fsaverage'
+        elif reference_brain == 'mri':
+            reference_brain = subject
+
+        pick_ori = report_data.pop("pick_ori")
+        lambda2 = report_data.pop("lambda2")
+        
+        # sources are not estimated yet; so first read in inverse solution
+        stc = apply_inverse_solution(outdir, subject, data, source_method, lambda2=lambda2, 
+                                                           pick_ori=pick_ori, inverse_operator=None, morph=reference_brain, save=False,
+                                                           )       
+        parcel_data = parcellation.surf_parcellate_timeseries(subject_dir=outdir, subject=reference_brain, stc=stc, method=method, parcellation=parcellation_file)
         
     # Orthogonalisation
     if orthogonalisation not in [None, "symmetric", "none", "None"]:
@@ -870,6 +938,7 @@ def parcellate(
             "parcellate": True,
             "parcellation_file": parcellation_file,
             "method": method,
+            "reference_brain": reference_brain,
             "orthogonalisation": orthogonalisation,
             "parc_fif_file": str(parc_fif_file),
             "n_samples": n_samples,
@@ -1086,6 +1155,7 @@ def beamform_and_parcellate(
                 "filters_svd_plot": filters_svd_plot,
                 "parcellation_file": parcellation_file,
                 "method": method,
+                "reference_brain": reference_brain,
                 "orthogonalisation": orthogonalisation,
                 "parc_fif_file": str(parc_fif_file),
                 "n_samples": n_samples,
@@ -1096,6 +1166,176 @@ def beamform_and_parcellate(
             },
         )
 
+
+def minimum_norm_and_parcellate(
+    outdir,
+    subject,
+    preproc_file,
+    epoch_file,
+    chantypes,
+    source_method,
+    rank,
+    depth,
+    loose,
+    reg,
+    pick_ori,
+    method,
+    parcellation_file,
+    orthogonalisation,
+    reference_brain="fsaverage",
+    extra_chans="stim",
+    freq_range=None,
+    reportdir=None,
+):
+    """Wrapper function for minimum_norm and parcellation.
+
+    Parameters
+    ----------
+    outdir : str
+        Path to where to output the source reconstruction files.
+    subject : str
+        Subject name/id.
+    preproc_file : str
+        Path to the preprocessed fif file.
+    epoch_file : str
+        Path to epoched preprocessed fif file.
+    chantypes : list
+        List of channel types to include.
+    source_method : str
+        Method to used for inverse modelling (e.g., MNE, eLORETA).
+    rank : int
+        Rank of the noise covariance matrix.
+    depth : float
+        Depth weighting factor.
+    loose : float
+        Loose orientation constraint.
+    reg : float
+        The regularisation parameter for the minimum norm estimate.
+    pick_ori : str
+        Orientation of the dipoles, used for minimum_norm.
+    method : str
+        Method to use in the parcellation.
+    parcellation_file : str
+        Path to the parcellation file to use.
+    orthogonalisation : bool
+        Should we do orthogonalisation?
+    freq_range : list, optional
+        Lower and upper band to bandpass filter before beamforming.
+        If None, no filtering is done.
+    reportdir : str, optional
+        Path to report directory.
+    """
+    logger.info("minimum_norm_and_parcellate")
+
+    # Load sensor-level data
+    if epoch_file is not None:
+        logger.info("using epoched data")
+        data = mne.read_epochs(epoch_file, preload=True)
+    else:
+        data = mne.io.read_raw_fif(preproc_file, preload=True)
+
+    # Bandpass filter
+    if freq_range is not None:
+        logger.info(f"bandpass filtering: {freq_range[0]}-{freq_range[1]} Hz")
+        data = data.filter(
+            l_freq=freq_range[0],
+            h_freq=freq_range[1],
+            method="iir",
+            iir_params={"order": 5, "ftype": "butter"},
+        )
+
+    logger.info("MNE source localize")    
+    inverse_operator = minimum_norm_estimate(
+        outdir,
+        subject,
+        data,
+        chantypes,
+        source_method,
+        rank,
+        depth,
+        loose,
+    )
+    
+    if reference_brain == 'mri':
+        reference_brain = subject
+    
+    # sources are not estimated yet; so first read in inverse solution
+    stc = apply_inverse_solution(outdir, subject, data, source_method, lambda2=reg, pick_ori=pick_ori,
+                                                           inverse_operator=inverse_operator, morph=reference_brain, save=False,
+                                                           )       
+    parcel_data = parcellation.surf_parcellate_timeseries(subject_dir=outdir, subject=reference_brain, stc=stc, method=method, parcellation=parcellation_file)
+        
+    # Orthogonalisation
+    if orthogonalisation not in [None, "symmetric", "none", "None"]:
+        raise NotImplementedError(orthogonalisation)
+
+    if orthogonalisation == "symmetric":
+        logger.info(f"{orthogonalisation} orthogonalisation")
+        parcel_data = parcellation.symmetric_orthogonalise(
+            parcel_data, maintain_magnitudes=True
+        )
+
+    os.makedirs(f"{outdir}/{subject}/parc", exist_ok=True)
+    if epoch_file is None:
+        # Save parcellated data as a MNE Raw object
+        parc_fif_file = f"{outdir}/{subject}/parc/parc-raw.fif"
+        logger.info(f"saving {parc_fif_file}")
+        parc_raw = parcellation.convert2mne_raw(
+            parcel_data, data, extra_chans=extra_chans
+        )
+        parc_raw.save(parc_fif_file, overwrite=True)
+    else:
+        # Save parcellated data as a MNE Epochs object
+        parc_fif_file = f"{outdir}/{subject}/parc/parc-epo.fif"
+        logger.info(f"saving {parc_fif_file}")
+        parc_epo = parcellation.convert2mne_epochs(parcel_data, data)
+        parc_epo.save(parc_fif_file, overwrite=True)
+
+    # Save plots
+    parc_psd_plot = f"{subject}/parc/psd.png"
+    parcellation.plot_psd(
+        parcel_data,
+        fs=data.info["sfreq"],
+        freq_range=freq_range,
+        parcellation_file=parcellation_file,
+        filename=f"{outdir}/{parc_psd_plot}",
+    )
+    parc_corr_plot = f"{subject}/parc/corr.png"
+    parcellation.plot_correlation(parcel_data, filename=f"{outdir}/{parc_corr_plot}")
+
+    if reportdir is not None:
+        # Save info for the report
+        n_parcels = parcel_data.shape[0]
+        n_samples = parcel_data.shape[1]
+        if parcel_data.ndim == 3:
+            n_epochs = parcel_data.shape[2]
+        else:
+            n_epochs = None
+        src_report.add_to_data(
+            f"{reportdir}/{subject}/data.pkl",
+            {
+                "minimum_norm_and_parcellate": True,
+                "minimum_norm": True,
+                "parcellate": True,
+                "chantypes": chantypes,
+                "reference_brain": reference_brain,
+                "method": source_method,
+                "rank": rank,
+                "depth": depth,
+                "loose": loose,
+                "lambda2": reg,
+                "pick_ori": pick_ori,
+                "parcellation_file": parcellation_file,
+                "method": method,
+                "orthogonalisation": orthogonalisation,
+                "parc_fif_file": str(parc_fif_file),
+                "n_samples": n_samples,
+                "n_parcels": n_parcels,
+                "n_epochs": n_epochs,
+                "parc_psd_plot": parc_psd_plot,
+                "parc_corr_plot": parc_corr_plot,
+            },
+        )
 
 # ----------------------
 # Sign flipping wrappers

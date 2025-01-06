@@ -24,13 +24,15 @@ import osl_ephys.source_recon.rhino.utils as rhino_utils
 from osl_ephys.utils.logger import log_or_print
 from osl_ephys.source_recon import freesurfer_utils
 
-def load_parcellation(parcellation_file):
+def load_parcellation(parcellation_file, subject=None):
     """Load a parcellation file.
 
     Parameters
     ----------
     parcellation_file : str
         Path to parcellation file.
+    subject : str
+        Subject ID. Only needed for FreeSurfer parcellations.
 
     Returns
     -------
@@ -40,9 +42,12 @@ def load_parcellation(parcellation_file):
     
     # check if it's a freesurfer parcellation
     if 'SUBJECTS_DIR' in os.environ:
-        avail = mne.label._read_annot_cands(os.path.join(os.environ["SUBJECTS_DIR"], 'fsaverage', 'label'))
+        if subject is None:
+            subject = "fsaverage"
+        
+        avail = mne.label._read_annot_cands(os.path.join(os.environ["SUBJECTS_DIR"], subject, 'label'))
         if parcellation_file in avail:
-            labels = mne.label.read_labels_from_annot('fsaverage', parcellation_file)
+            labels = mne.label.read_labels_from_annot(subject, parcellation_file)
             if parcellation_file == 'aparc' or parcellation_file == "oasis.chubs":
                 labels = [l for l in labels if "unknown" not in l.name]
             elif parcellation_file == 'aparc.a2009s':
@@ -55,7 +60,7 @@ def load_parcellation(parcellation_file):
                 labels = [l for l in labels if "LOBE" in l.name] 
             return labels
     
-    # otherwise, load the parcellation file
+    # otherwise, load the nifti parcellation file
     parcellation_file = find_file(parcellation_file)
     return nib.load(parcellation_file)
 
@@ -363,7 +368,7 @@ def _get_parcel_timeseries(voxel_timeseries, parcellation_asmatrix, method="spat
     return parcel_timeseries, voxel_weightings, voxel_assignments
 
 
-def surf_parcellate_timeseries(subject_dir, subject, preproc_file, epoch_file, method, parcellation_file):
+def surf_parcellate_timeseries(subject_dir, subject, stc, method, parc):
     """Save parcellated data as a fif file.
     
     Parameters
@@ -372,23 +377,17 @@ def surf_parcellate_timeseries(subject_dir, subject, preproc_file, epoch_file, m
         Path to subject directory.
     subject : str
         Subject ID.
-    preproc_file : str
-        Path to preprocessed file.
-    epoch_file : str or None
-        Path to epoch file.
+    stc : mne.SourceEstimate
+        Source estimate.
     method : str
         Parcellation method. Can be 'pca_flip', 'max', 'mean', 'mean_flip', 'auto'
+    parc : str
+        Parcellation name.
     """
     fs_files = freesurfer_utils.get_freesurfer_files(subject_dir, subject)
-    if epoch_file is not None:
-        src_file = op.join(subject_dir, subject, "mne_src", "src-epo")
-    else:
-        src_file = op.join(subject_dir, subject, "mne_src", "src-raw")
     
-    labels = mne.read_labels_from_annot(subjects_dir=subject_dir, subject=subject, parc=parcellation_file)
-    labels = [l for l in labels if "unknown" not in l.name]
+    labels = load_parcellation(parc, subject=subject)
     
-    stc = mne.read_source_estimate(src_file, subject=subject)
     src = mne.read_source_spaces(fs_files['coreg']['source_space'])
     parcel_data = mne.extract_label_time_course(stc, labels, src, mode=method)
     return parcel_data

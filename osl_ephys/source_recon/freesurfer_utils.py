@@ -93,20 +93,7 @@ def get_freesurfer_files(subjects_dir, subject):
         "std_brain_mri": op.join(os.environ["FREESURFER_HOME"], "subjects", "fsaverage", "mri", "T1.mgz"),
         "completed": op.join(surfaces_dir, "completed.txt"),
     }
-    #     "mni2mri_flirt_xform_file": op.join(surfaces_dir, "tranforms", "talairach.xfm"),
-    #     "mni_mri_t_file": op.join(surfaces_dir, "mni_mri-trans.fif"),
-    #     "bet_outskin_mesh_vtk_file": op.join(surfaces_dir, "outskin_mesh.vtk"),  # BET output
-    #     "bet_inskull_mesh_vtk_file": op.join(surfaces_dir, "inskull_mesh.vtk"),  # BET output
-    #     "bet_outskull_mesh_vtk_file": op.join(surfaces_dir, "outskull_mesh.vtk"),  # BET output
-    #     "bet_outskin_mesh_file": op.join(surfaces_dir, "outskin_mesh.nii.gz"),
-    #     "bet_outskin_plus_nose_mesh_file": op.join(surfaces_dir, "outskin_plus_nose_mesh.nii.gz"),
-    #     "bet_inskull_mesh_file": op.join(surfaces_dir, "inskull_mesh.nii.gz"),
-    #     "bet_outskull_mesh_file": op.join(surfaces_dir, "outskull_mesh.nii.gz"),
-    #     "std_brain": op.join(os.environ["FSLDIR"], "data", "standard", "MNI152_T1_1mm_brain.nii.gz"),
-    #     "std_brain_bigfov": op.join(os.environ["FSLDIR"], "data", "standard", "MNI152_T1_1mm_BigFoV_facemask.nii.gz"),
-    #     "completed": op.join(surfaces_dir, "completed.txt"),
-    # }
-
+    
     # Coregistration files
     coreg_dir = op.join(fs_dir, "mne_src")
     os.makedirs(coreg_dir, exist_ok=True)
@@ -116,46 +103,10 @@ def get_freesurfer_files(subjects_dir, subject):
         "coreg_trans": op.join(coreg_dir, "coreg-trans.fif"),
         "coreg_html": op.join(coreg_dir, "coreg.html"),
         "source_space": op.join(coreg_dir, "space-src.fif"),
-        # "stc": op.join(coreg_dir, "stc-data", f"{subject}-lh.stc"),
-        # "filters_plot_cov": op.join(coreg_dir, "noise_cov.png"),
-        # "filters_plot_svd": op.join(coreg_dir, "noise_svd.png"),
+        "inverse_solution": op.join(coreg_dir, "{0}-inv.fif"),
+        "source_estimate_raw": op.join(coreg_dir, "src-raw"), # followed by -lh/rh.stc
+        "source_estimate_epo": op.join(coreg_dir, "src-epo"),
     }
-        
-        
-        # "info_fif_file": op.join(coreg_dir, "info-raw.fif"),
-        # "smri_file": op.join(coreg_dir, "scaled_smri.nii.gz"),
-        # "head_scaledmri_t_file": op.join(coreg_dir, "head_scaledmri-trans.fif"),
-        # "head_mri_t_file": op.join(coreg_dir, "head_mri-trans.fif"),
-        # "ctf_head_mri_t_file": op.join(coreg_dir, "ctf_head_mri-trans.fif"),
-        # "mrivoxel_scaledmri_t_file": op.join(coreg_dir, "mrivoxel_scaledmri_t_file-trans.fif"),
-        # "mni_nasion_mni_file": op.join(coreg_dir, "mni_nasion.txt"),
-        # "mni_rpa_mni_file": op.join(coreg_dir, "mni_rpa.txt"),
-        # "mni_lpa_mni_file": op.join(coreg_dir, "mni_lpa.txt"),
-        # "smri_nasion_file": op.join(coreg_dir, "smri_nasion.txt"),
-        # "smri_rpa_file": op.join(coreg_dir, "smri_rpa.txt"),
-        # "smri_lpa_file": op.join(coreg_dir, "smri_lpa.txt"),
-        # "polhemus_nasion_file": op.join(coreg_dir, "polhemus_nasion.txt"),
-        # "polhemus_rpa_file": op.join(coreg_dir, "polhemus_rpa.txt"),
-        # "polhemus_lpa_file": op.join(coreg_dir, "polhemus_lpa.txt"),
-        # "polhemus_headshape_file": op.join(coreg_dir, "polhemus_headshape.txt"),
-        # # BET mesh output in native space
-        # "bet_outskin_mesh_vtk_file": op.join(coreg_dir, "scaled_outskin_mesh.vtk"),
-        # "bet_inskull_mesh_vtk_file": op.join(coreg_dir, "scaled_inskull_mesh.vtk"),
-        # "bet_outskull_mesh_vtk_file": op.join(coreg_dir, "scaled_outskull_mesh.vtk"),
-        # # Freesurfer mesh in native space
-        # # - these are the ones shown in coreg_display() if doing surf plot
-        # # - these are also used by MNE forward modelling
-        # "bet_outskin_surf_file": op.join(coreg_dir, "scaled_outskin_surf.surf"),
-        # "bet_inskull_surf_file": op.join(coreg_dir, "scaled_inskull_surf.surf"),
-        # "bet_outskull_surf_file": op.join(coreg_dir, "scaled_outskull_surf.surf"),
-        # "bet_outskin_plus_nose_surf_file": op.join(coreg_dir, "scaled_outskin_plus_nose_surf.surf"),
-        # # BET output surface mask as nii in native space
-        # "bet_outskin_mesh_file": op.join(coreg_dir, "scaled_outskin_mesh.nii.gz"),
-        # "bet_outskin_plus_nose_mesh_file": op.join(coreg_dir, "scaled_outskin_plus_nose_mesh.nii.gz"),
-        # "bet_inskull_mesh_file": op.join(coreg_dir, "scaled_inskull_mesh.nii.gz"),
-        # "bet_outskull_mesh_file": op.join(coreg_dir, "scaled_outskull_mesh.nii.gz"),
-        # "std_brain": op.join(os.environ["FSLDIR"], "data", "standard", "MNI152_T1_1mm_brain.nii.gz"),
-    
 
     # All Freesurfer files files
     files = {"surf": surf_files, "coreg": coreg_files, "fwd_model": op.join(fs_dir, "model-fwd.fif")}
