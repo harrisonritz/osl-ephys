@@ -928,7 +928,7 @@ def run_osl_ica_manualreject(dataset, userargs):
 
 #%% GLM wrappers
 
-def zscore_present_data(dataset, userargs):
+def run_osl_zscore_present_data(dataset, userargs):
     """
     z-scoring parametric regressors, without NaNs
     Nans will be zeros in the z-scored version
@@ -952,7 +952,7 @@ def zscore_present_data(dataset, userargs):
     return dataset
 
 
-def glm_add_regressor(dataset, userargs):
+def run_osl_glm_add_regressor(dataset, userargs):
     """osl-ephys Batch wrapper for :py:func:`osl_ephys.preprocessing.osl_glm.add_regressor <osl_ephys.preprocessing.osl_glm.add_regressor>`.
     
     Parameters
@@ -995,7 +995,7 @@ def glm_add_regressor(dataset, userargs):
     return dataset
 
 
-def glm_add_contrast(dataset, userargs):
+def run_osl_glm_add_contrast(dataset, userargs):
     """osl-ephys Batch wrapper for :py:func:`osl_ephys.preprocessing.osl_glm.add_regressor <osl_ephys.preprocessing.osl_glm.add_regressor>`.
 
     Parameters
@@ -1025,7 +1025,7 @@ def glm_add_contrast(dataset, userargs):
     return dataset
 
 
-def glm_fit(dataset, userargs):
+def run_osl_glm_fit(dataset, userargs):
     """ wrapper for the different glm functions in the glm module
     
     Parameters
@@ -1115,7 +1115,7 @@ def glm_fit(dataset, userargs):
     return dataset
 
 
-def glm_permutations(dataset, userargs):
+def run_osl_glm_permutations(dataset, userargs):
     """ wrapper for the different permutation options in the glm module
     
     Parameters
