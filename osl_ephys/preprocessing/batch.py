@@ -721,7 +721,6 @@ def run_proc_chain(
     overwrite=False,
     skip_save=None,
     extra_funcs=None,
-    covs=None,
     random_seed='auto',
     verbose="INFO",
     mneverbose="WARNING",
@@ -868,7 +867,6 @@ def run_proc_chain(
             "epochs": None,
             "event_id": config["meta"]["event_codes"],
             "ica": None,
-            "covs": covs,
             "fig": {},
         }
 
