@@ -15,7 +15,9 @@ import pickle
 from os.path import exists
 from scipy import stats
 from pathlib import Path
-
+import glmtools
+from ..glm import glm_epochs, glm_spectrum, glm_irasa, group_glm_epochs, group_glm_spectrum, MaxStatPermuteGLMSpectrum, ClusterPermuteGLMSpectrum
+from ..glm.glm_base import SensorMaxStatPerm, SensorClusterPerm
 logger = logging.getLogger(__name__)
 
 
@@ -921,4 +923,208 @@ def run_osl_ica_manualreject(dataset, userargs):
         dataset["ica"].apply(dataset["raw"])
     else:
         logger.info("Components were not removed from raw data")
+    return dataset
+
+#%% GLM wrappers
+
+def zscore_present_data(dataset, userargs):
+    """
+    z-scoring parametric regressors, without NaNs
+    Nans will be zeros in the z-scored version
+    
+    Parameters
+    ----------
+    dataset: dict
+        Dictionary containing at least an MNE object with the key ``covs``.
+    userargs: dict
+        Dictionary of additional arguments containing the keys ``keys``.
+    """
+    keys = userargs.pop("keys", None)
+    # make sure keys is a single string or list of strings
+    if keys[0]=='[' and keys[-1]==']':
+        keys = keys[1:-1].split(' ')
+        
+    for key in keys:
+        new = stats.zscore(dataset["covs"][key], nan_policy='omit')
+        new[np.isnan(dataset["covs"][key])] = 0
+        dataset["covs"][key] = new
+    return dataset
+
+
+def glm_add_regressor(dataset, userargs):
+    """osl-ephys Batch wrapper for :py:func:`osl_ephys.preprocessing.osl_glm.add_regressor <osl_ephys.preprocessing.osl_glm.add_regressor>`.
+
+    Parameters
+    """
+    logger.info("osl-ephys Stage - {0}".format("GLM Add Regressor"))
+    if 'design_config' not in dataset:
+        dataset['design_config'] = glmtools.design.DesignConfig()
+    
+    rtype = userargs.pop("rtype", None)
+    name = userargs.pop("name", None)
+    codes = userargs.pop("codes", None)
+    preproc = userargs.pop("preproc", None)
+    key = userargs.pop("key", None)
+    
+    if rtype == 'Constant':
+        dataset['design_config'].add_regressor(name, rtype)    
+    elif rtype == 'Categorical':
+        codes = [
+            float(codes)
+            if np.logical_or(type(codes) == int, type(codes) == float)
+            else np.array(codes.split(" ")).astype(float)
+            ]
+        dataset['design_config'].add_regressor(name, rtype, codes=codes)
+    elif rtype == 'Parametric':
+        dataset['design_config'].add_regressor(name, rtype, datainfo=key, preproc=preproc)
+    elif rtype == 'MeanEffects':
+        dataset['design_config'].add_regressor(name=name + '_{0}',rtype=rtype, datainfo=key)
+    else:
+        raise ValueError("Unknown regressor type")
+    return dataset
+
+
+def glm_add_contrast(dataset, userargs):
+    """osl-ephys Batch wrapper for :py:func:`osl_ephys.preprocessing.osl_glm.add_regressor <osl_ephys.preprocessing.osl_glm.add_regressor>`.
+
+    Parameters
+    """
+    logger.info("osl-ephys Stage - {0}".format("GLM Add Contrast"))
+    
+    simple = userargs.pop("simple", False)  
+    name = userargs.pop("name", None)
+    values = userargs.pop("values", None)
+    
+    if simple:
+        dataset['design_config'].add_simple_contrasts()
+    else:
+        import re
+        def string_to_dict(input_string):
+            # Replace unquoted keys with quoted keys
+            input_string = re.sub(r'(?<![\w])([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', input_string)
+            # Evaluate the string as a dictionary
+            return eval(input_string)
+        values = string_to_dict(values)
+        dataset['design_config'].add_contrast(name=name, values=values)
+    
+    return dataset
+
+
+def glm(dataset, userargs):
+    """ wrapper for the different glm functions in the glm module
+    
+    Parameters
+    ----------
+    dataset: dict
+        Dictionary containing at least an MNE object with the key ``covs``.
+    userargs: dict
+        Dictionary of additional arguments
+        
+    Returns
+    -------
+    dataset: dict
+        Input dictionary containing MNE objects that have been modified in place.
+    """
+    run_on_group = userargs.pop("run_on_group", False)
+    target = userargs.pop("target", "raw")
+    name = userargs.pop("name", "glm")
+    method = userargs.pop("method", None)
+    if method is None:
+        raise ValueError("method not specified")
+    metric = userargs.pop("metric", 'copes')
+    
+    plot_summary = userargs.pop("plot_summary", True)
+    plot_efficiency = userargs.pop("plot_efficiency", True)
+    plot_leverage = userargs.pop("plot_leverage", True)
+    
+    if method == 'epochs' or method == 'glm_epochs':
+        baseline = userargs.pop("baseline", None)
+        if baseline is not None:
+            baseline = np.array(baseline[1:-1].split(" ")).astype(float)
+            
+        if run_on_group:
+            dataset[name] = group_glm_epochs(dataset[target], dataset['design_config'], dataset['covs'], metric, baseline)
+        else:
+            dataset[name] = glm_epochs(dataset['design_config'], dataset[target])
+    
+    elif method in ['spectrum', 'glm_spectrum', 'irasa', 'glm_irasa']:
+        if run_on_group:
+            dataset[name] = group_glm_spectrum(dataset[target], dataset['design_config'], dataset['covs'], metric, baseline)
+        else:
+            reg_categorical = userargs.pop("reg_categorical", None)
+            if reg_categorical[0]=='[' and reg_categorical[-1]==']':
+                reg_categorical = userargs["covs"][reg_categorical[1:-1].split(' ')]
+            else:
+                reg_categorical = userargs["covs"][reg_categorical]
+            
+            reg_ztrans = userargs.pop("reg_ztrans", None)
+            if reg_ztrans[0]=='[' and reg_ztrans[-1]==']':
+                reg_ztrans = userargs["covs"][reg_ztrans[1:-1].split(' ')]
+            else:
+                reg_ztrans = userargs["covs"][reg_ztrans]
+                
+            reg_unitmax = userargs.pop("reg_unitmax", None)
+            if reg_unitmax[0]=='[' and reg_unitmax[-1]==']':
+                reg_unitmax = userargs["covs"][reg_unitmax[1:-1].split(' ')]
+            else:
+                reg_unitmax = userargs["covs"][reg_unitmax]
+                
+            if method in ['spectrum', 'glm_spectrum']:
+                dataset[name] = glm_spectrum(dataset[target], reg_unitmax=reg_unitmax, reg_ztrans=reg_ztrans, reg_categorical=reg_categorical, **userargs)
+            else:
+                dataset[name] = glm_irasa(dataset[target], reg_unitmax=reg_unitmax, reg_ztrans=reg_ztrans, reg_categorical=reg_categorical, **userargs)
+                                               
+    if plot_summary:
+        dataset['fig'][name + 'design_summary'] = dataset[name].design.plot_summary(show=False)
+    
+    if plot_efficiency:
+        dataset['fig'][name + 'design_efficiency'] = dataset[name].design.plot_efficiency(show=False)
+        
+    if plot_leverage:
+        dataset['fig'][name + 'design_leverage'] = dataset[name].design.plot_leverage(show=False)
+
+    return dataset
+
+
+def glm_permutations(dataset, userargs):
+    """ wrapper for the different permutation options in the glm module
+    
+    Parameters
+    ----------
+    dataset: dict
+        Dictionary containing at least an MNE object with the key ``covs``.
+    userargs: dict
+        Dictionary of additional arguments
+        
+    Returns
+    -------
+    dataset: dict
+        Input dictionary containing MNE objects that have been modified in place.
+    """
+    target = userargs.pop("target", "glm")
+    name = userargs.pop("name", "glm_perm")
+    method = userargs.pop("method", None)
+    if method is None:
+        raise ValueError("method not specified")
+    type = userargs.pop("type", None)
+    if type is None:
+        raise ValueError("type not specified (e.g. 'max', 'cluster')")
+    
+    contrast = userargs.pop("contrast", None)
+    contrast = dataset[target].contrast_names.index(contrast)
+    fl_contrast = userargs.pop("fl_contrast", 0)
+    if fl_contrast != 0:
+        fl_contrast = dataset[target].fl_contrast_names.index(fl_contrast)
+    
+    if type in ['max', 'maxstat']:
+        if method == 'epochs' or method == 'glm_epochs':
+            dataset[name] = SensorMaxStatPerm(dataset[target], contrast, fl_contrast, **userargs)
+        elif method == 'spectrum' or method == 'glm_spectrum':
+            dataset[name] = MaxStatPermuteGLMSpectrum(dataset[target], contrast, fl_contrast, **userargs)
+    elif type == 'cluster':
+        if method == 'epochs' or method == 'glm_epochs':
+            dataset[name] = SensorClusterPerm(dataset[target], contrast, fl_contrast, **userargs)
+        elif method == 'spectrum' or method == 'glm_spectrum':
+            dataset[name] = ClusterPermuteGLMSpectrum(dataset[target], contrast, fl_contrast, **userargs)
+    
     return dataset
