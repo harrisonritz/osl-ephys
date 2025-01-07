@@ -1009,13 +1009,17 @@ def glm_add_contrast(dataset, userargs):
     if simple:
         dataset['design_config'].add_simple_contrasts()
     else:
-        import re
-        def string_to_dict(input_string):
-            # Replace unquoted keys with quoted keys
-            input_string = re.sub(r'(?<![\w])([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', input_string)
-            # Evaluate the string as a dictionary
-            return eval(input_string)
-        values = string_to_dict(values)
+        if values == 'unique':
+            values = np.unique(dataset['covs'][name])
+            values={f"{name}_{v}": 1/len(values) for v in values}
+        else:
+            import re
+            def string_to_dict(input_string):
+                # Replace unquoted keys with quoted keys
+                input_string = re.sub(r'(?<![\w])([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', input_string)
+                # Evaluate the string as a dictionary
+                return eval(input_string)
+            values = string_to_dict(values)
         dataset['design_config'].add_contrast(name=name, values=values)
     
     return dataset
