@@ -76,16 +76,19 @@ def gen_html_data(config, outdir, subject, reportdir, logger=None, extra_funcs=N
     data["coregister"] = data.pop("coregister", False)
     data["beamform"] = data.pop("beamform", False)
     data["beamform_and_parcellate"] = data.pop("beamform_and_parcellate", False)
+    data["minimum_norm"] = data.pop("minimum_norm", False)
+    data["minimum_norm_and_parcellate"] = data.pop("minimum_norm_and_parcellate", False)
     data["fix_sign_ambiguity"] = data.pop("fix_sign_ambiguity", False)
 
     # Save info
-    if data["beamform_and_parcellate"]:
+    if data["beamform_and_parcellate"] or data['minimum_norm_and_parcellate']:
         data["n_samples"] = data["n_samples"]
     if data["coregister"]:
         data["fid_err"] = data["fid_err"]
-    if data["beamform_and_parcellate"]:
+    if data["beamform_and_parcellate"] or data['minimum_norm_and_parcellate']:
         data["parcellation_file"] = data["parcellation_file"]
-        data["parcellation_filename"] = Path(data["parcellation_file"]).name
+        if data["beamform_and_parcellate"]:
+            data["parcellation_filename"] = Path(data["parcellation_file"]).name
     if data["fix_sign_ambiguity"]:
         data["template"] = data["template"]
         data["metrics"] = data["metrics"]
@@ -242,6 +245,8 @@ def gen_html_summary(reportdir, logsdir=None):
     data["coregister"] = subject_data[0]["coregister"]
     data["beamform"] = subject_data[0]["beamform"]
     data["beamform_and_parcellate"] = subject_data[0]["beamform_and_parcellate"]
+    data["minimum_norm"] = subject_data[0]["minimum_norm"]
+    data["minimum_norm_and_parcellate"] = subject_data[0]["minimum_norm_and_parcellate"]
     data["fix_sign_ambiguity"] = subject_data[0]["fix_sign_ambiguity"]
 
     if data["coregister"]:
@@ -249,8 +254,12 @@ def gen_html_summary(reportdir, logsdir=None):
 
         fid_err_table = pd.DataFrame()
         fid_err_table["Session ID"] = [subject_data[i]["fif_id"] for i in range(len(subject_data))]
-        for i_err, hdr in enumerate(["Nasion", "LPA", "RPA"]):
-            fid_err_table[hdr] = [np.round(subject_data[i]['fid_err'][i_err], decimals=2) if 'fid_err' in subject_data[i].keys() else None for i in range(len(subject_data))]
+        if len(subject_data[0]['fid_err'])==4:
+            for i_err, hdr in enumerate(["Nasion", "LPA", "RPA", "Med(HSP-MRI)"]):
+                fid_err_table[hdr] = [np.round(subject_data[i]['fid_err'][i_err], decimals=2) if 'fid_err' in subject_data[i].keys() else None for i in range(len(subject_data))]   
+        else:
+            for i_err, hdr in enumerate(["Nasion", "LPA", "RPA"]):
+                fid_err_table[hdr] = [np.round(subject_data[i]['fid_err'][i_err], decimals=2) if 'fid_err' in subject_data[i].keys() else None for i in range(len(subject_data))]
         fid_err_table.index += 1 # Start indexing from 1
         data['coreg_table'] = fid_err_table.to_html(classes="display", table_id="coreg_tbl")
 
