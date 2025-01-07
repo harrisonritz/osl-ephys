@@ -70,7 +70,7 @@ config = """
     source_recon:
     - coregister:
         mode: mne
-        nasion_weight; 2.0
+        nasion_weight: 2.0
     - forward_model:
         model: Single Layer
         mode: surface
@@ -78,15 +78,17 @@ config = """
         gridstep: 8
     - minimum_norm:
         method: eLORETA
-        rank: 70
+        rank: 20
+        depth: 0.8
         loose: 0.2
-        lambda2: 0.1
-        morph: fsaverage
+        reg: 0.1
+        pick_ori: None
     - parcellate:
-        - parcellation_file: aparc
+        - source_method: minimum_norm
+        - parcellation_file: Yeo2011_7Networks_N1000
+        - reference_brain: fsaverage
         - method: pca_flip
         - orthogonalisation: symmetric
-        - source_method: minimum_norm
 """
 
 
