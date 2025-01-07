@@ -15,6 +15,7 @@ import pickle
 from os.path import exists
 from scipy import stats
 from pathlib import Path
+import matplotlib.pyplot as plt
 import glmtools
 from ..glm import glm_epochs, glm_spectrum, glm_irasa, group_glm_epochs, group_glm_spectrum, MaxStatPermuteGLMSpectrum, ClusterPermuteGLMSpectrum
 from ..glm.glm_base import SensorMaxStatPerm, SensorClusterPerm
@@ -969,12 +970,17 @@ def glm_add_regressor(dataset, userargs):
     if rtype == 'Constant':
         dataset['design_config'].add_regressor(name, rtype)    
     elif rtype == 'Categorical':
-        codes = [
-            float(codes)
-            if np.logical_or(type(codes) == int, type(codes) == float)
-            else np.array(codes.split(" ")).astype(float)
-            ]
-        dataset['design_config'].add_regressor(name, rtype, codes=codes)
+        if codes == 'unique': # add a regressor for each unique value
+            codes = np.unique(dataset['covs'][key])
+            for code in codes:
+                dataset['design_config'].add_regressor(name + '_{0}'.format(code), rtype, codes=code)
+        else:
+            codes = [
+                float(codes)
+                if np.logical_or(type(codes) == int, type(codes) == float)
+                else np.array(codes.split(" ")).astype(float)
+                ]
+            dataset['design_config'].add_regressor(name, rtype, codes=codes)
     elif rtype == 'Parametric':
         dataset['design_config'].add_regressor(name, rtype, datainfo=key, preproc=preproc)
     elif rtype == 'MeanEffects':
@@ -1010,7 +1016,7 @@ def glm_add_contrast(dataset, userargs):
     return dataset
 
 
-def glm(dataset, userargs):
+def glm_fit(dataset, userargs):
     """ wrapper for the different glm functions in the glm module
     
     Parameters
@@ -1110,6 +1116,9 @@ def glm_permutations(dataset, userargs):
     if type is None:
         raise ValueError("type not specified (e.g. 'max', 'cluster')")
     
+    thresh = userargs.pop("thresh", 95)
+    plot_sig = userargs.pop("plot_sig", True)
+    
     contrast = userargs.pop("contrast", None)
     contrast = dataset[target].contrast_names.index(contrast)
     fl_contrast = userargs.pop("fl_contrast", 0)
@@ -1127,4 +1136,8 @@ def glm_permutations(dataset, userargs):
         elif method == 'spectrum' or method == 'glm_spectrum':
             dataset[name] = ClusterPermuteGLMSpectrum(dataset[target], contrast, fl_contrast, **userargs)
     
+    if plot_sig:
+        fig, ax = plt.subplots()
+        dataset[name].plot_sig_clusters(thresh, ax=ax)
+        dataset['fig'][name + 'sig' + thresh] = fig
     return dataset
