@@ -459,7 +459,7 @@ def write_dataset(dataset, outbase, run_id, ftype='preproc-raw', overwrite=False
         outnames = {"raw": outbase.format(run_id=run_id, ftype=ftype, fext="fif")}
         if Path(outnames["raw"]).exists() and not overwrite:
             raise ValueError(
-                "{} already exists. Please delete or do use overwrite=True.".format(fif_outname)
+                "{} already exists. Please delete or do use overwrite=True.".format(outnames['raw'])
             )
         logger.info(f"Saving dataset['raw'] as {outnames['raw']}")
         dataset["raw"].save(outnames['raw'], overwrite=overwrite)   
@@ -494,6 +494,14 @@ def write_dataset(dataset, outbase, run_id, ftype='preproc-raw', overwrite=False
         logger.info(f"Saving dataset['glm'] as {outnames['glm']}")
         dataset["glm"].save_pkl(outnames['glm'], overwrite=overwrite)
     
+    if "fig" in dataset and "fig" not in skip and dataset['fig'] is not None:
+        keys = dataset["fig"].keys()
+        outnames['fig'] = {}
+        for key in keys:
+            outnames['fig'][key] = outbase.format(run_id=run_id, ftype=key, fext="png")
+            logger.info(f"Saving dataset['fig'][{key}] as {outnames['fig'][key]}")
+            dataset["fig"][key].savefig(outnames['fig'][key])
+            
     # save remaining keys as pickle files
     for key in dataset:
         if key not in outnames and key not in skip:
@@ -857,6 +865,7 @@ def run_proc_chain(
             "epochs": None,
             "event_id": config["meta"]["event_codes"],
             "ica": None,
+            "fig": {},
         }
 
         # Do the preprocessing
@@ -864,6 +873,7 @@ def run_proc_chain(
             method, userargs = next(iter(stage.items()))
             target = userargs.get("target", "raw")  # Raw is default
             func = find_func(method, target=target, extra_funcs=extra_funcs)
+            
             # Actual function call
             dataset = func(dataset, userargs)
 
@@ -959,6 +969,7 @@ def run_proc_batch(
     overwrite=False,
     skip_save=None,
     extra_funcs=None,
+    covs=None,
     random_seed='auto',
     verbose="INFO",
     mneverbose="WARNING",
@@ -995,6 +1006,8 @@ def run_proc_batch(
         List of keys to skip writing to disk. If None, we don't skip any keys.    
     extra_funcs : list
         User-defined functions.
+    covs : dict or pd.DataFrame
+        Covariates to use for building the GLM design
     random_seed : 'auto' (default), int or None
         Random seed to set. If 'auto', a random seed will be generated. Random seeds are set for both Python and NumPy.
         If None, no random seed is set.
@@ -1153,11 +1166,19 @@ def run_proc_batch(
         for key in group_inputs[0]:
             dataset[key] = [group_inputs[i][key] for i in range(len(group_inputs))]
             skip_save.append(key)
+        
+        if covs is not None:
+            dataset['covs'] = covs
+        dataset['fig'] = {}
+        
         for stage in deepcopy(config["group"]):
             method, userargs = next(iter(stage.items()))
+            # make sure the function always knows it's a group processing
+            userargs['run_on_group'] = True
             target = userargs.get("target", "raw")  # Raw is default
             # skip.append(stage if userargs.get("skip_save") is True else None) # skip saving this stage to disk
             func = find_func(method, target=target, extra_funcs=extra_funcs)
+                
             # Actual function call
             dataset = func(dataset, userargs)
         outbase = os.path.join(outdir, "{ftype}.{fext}")
