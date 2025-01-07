@@ -753,8 +753,6 @@ def run_proc_chain(
         List of keys to skip writing to disk. If None, we don't skip any keys.
     extra_funcs : list
         User-defined functions.
-    covs : dict, pd.DataFrame, or None
-        Covariates for GLM.
     random_seed : 'auto' (default), int or None
         Random seed to set. If 'auto', a random seed will be generated. Random seeds are set for both Python and NumPy.
         If None, no random seed is set.
@@ -1117,7 +1115,6 @@ def run_proc_batch(
             overwrite=overwrite,
             skip_save=skip_save,
             extra_funcs=extra_funcs,
-            covs=covs,
             random_seed=random_seed,
         )
 
