@@ -1126,8 +1126,8 @@ def glm_permutations(dataset, userargs):
     dataset: dict
         Input dictionary containing MNE objects that have been modified in place.
     """
-    target = userargs.pop("target", "glm")
-    name = userargs.pop("name", "glm_perm")
+    target = userargs.pop("target", "group_glm")
+    name = userargs.pop("name", "group_glm_perm")
     method = userargs.pop("method", None)
     if method is None:
         raise ValueError("method not specified")
@@ -1135,7 +1135,7 @@ def glm_permutations(dataset, userargs):
     if type is None:
         raise ValueError("type not specified (e.g. 'max', 'cluster')")
     
-    thresh = userargs.pop("thresh", 95)
+    thresh = userargs.pop("threshold", 95)
     plot_sig = userargs.pop("plot_sig", True)
     
     contrast = userargs.pop("contrast", None)
