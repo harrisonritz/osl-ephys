@@ -963,7 +963,7 @@ def run_osl_glm_add_regressor(dataset, userargs):
         Dictionary of additional arguments containing the keys ``keys``.
     """
     logger.info("osl-ephys Stage - {0}".format("GLM Add Regressor"))
-    if 'design_config' not in dataset:
+    if 'design_config' not in dataset or not isinstance(dataset['design_config'], glmtools.design.DesignConfig):
         dataset['design_config'] = glmtools.design.DesignConfig()
     
     rtype = userargs.pop("rtype", None)
@@ -978,16 +978,14 @@ def run_osl_glm_add_regressor(dataset, userargs):
         if codes == 'unique': # add a regressor for each unique value
             codes = np.unique(dataset['covs'][key])
             for code in codes:
-                dataset['design_config'].add_regressor(name + '_{0}'.format(code), rtype, codes=code)
+                dataset['design_config'].add_regressor(name=name + '_{0}'.format(code), rtype=rtype, codes=code)
         else:
-            codes = [
-                float(codes)
+            codes = [float(codes)
                 if np.logical_or(type(codes) == int, type(codes) == float)
-                else np.array(codes.split(" ")).astype(float)
-                ]
-            dataset['design_config'].add_regressor(name, rtype, codes=codes)
+                else np.array(codes[0].split(" ")).astype(float)][0]
+            dataset['design_config'].add_regressor(name=name, rtype=rtype, codes=codes)
     elif rtype == 'Parametric':
-        dataset['design_config'].add_regressor(name, rtype, datainfo=key, preproc=preproc)
+        dataset['design_config'].add_regressor(name=name, rtype=rtype, datainfo=key, preproc=preproc)
     elif rtype == 'MeanEffects':
         dataset['design_config'].add_regressor(name=name + '_{0}',rtype=rtype, datainfo=key)
     else:
@@ -1005,21 +1003,20 @@ def run_osl_glm_add_contrast(dataset, userargs):
     simple = userargs.pop("simple", False)  
     name = userargs.pop("name", None)
     values = userargs.pop("values", None)
+    key = userargs.pop("key", None)
     
     if simple:
         dataset['design_config'].add_simple_contrasts()
     else:
         if values == 'unique':
-            values = np.unique(dataset['covs'][name])
-            values={f"{name}_{v}": 1/len(values) for v in values}
+            values = np.unique(dataset['covs'][key])
+            values={f"{key}_{v}": 1/len(values) for v in values}
         else:
-            import re
-            def string_to_dict(input_string):
-                # Replace unquoted keys with quoted keys
-                input_string = re.sub(r'(?<![\w])([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', input_string)
-                # Evaluate the string as a dictionary
-                return eval(input_string)
-            values = string_to_dict(values)
+            for key, value in values.items():
+                if isinstance(values[key], str):
+                    values[key] = float(eval(value))
+                else: 
+                    values[key] = float(value)
         dataset['design_config'].add_contrast(name=name, values=values)
     
     return dataset
@@ -1130,6 +1127,7 @@ def run_osl_glm_permutations(dataset, userargs):
     dataset: dict
         Input dictionary containing MNE objects that have been modified in place.
     """
+    run_on_group = userargs.pop("run_on_group", False)
     target = userargs.pop("target", "group_glm")
     name = userargs.pop("name", "group_glm_perm")
     method = userargs.pop("method", None)
@@ -1162,5 +1160,5 @@ def run_osl_glm_permutations(dataset, userargs):
     if plot_sig:
         fig, ax = plt.subplots()
         dataset[name].plot_sig_clusters(thresh, ax=ax)
-        dataset['fig'][name + 'sig' + thresh] = fig
+        dataset['fig'][name + 'sig' + str(thresh)] = fig
     return dataset

@@ -500,7 +500,7 @@ def write_dataset(dataset, outbase, run_id, ftype='preproc-raw', overwrite=False
         for key in keys:
             outnames['fig'][key] = outbase.format(run_id=run_id, ftype=key, fext="png")
             logger.info(f"Saving dataset['fig'][{key}] as {outnames['fig'][key]}")
-            dataset["fig"].savefig(outnames['fig'][key], overwrite=overwrite)
+            dataset["fig"][key].savefig(outnames['fig'][key])
             
     # save remaining keys as pickle files
     for key in dataset:
