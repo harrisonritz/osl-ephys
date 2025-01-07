@@ -11,7 +11,7 @@ import os.path as op
 from mne import setup_source_space, write_source_spaces, read_source_spaces, bem
 from osl_ephys.utils.logger import log_or_print
 
-def setup_freesurfer(directory):
+def setup_freesurfer(directory, subjects_dir=None):
     """Setup FSL.
 
     Parameters
@@ -39,6 +39,10 @@ def setup_freesurfer(directory):
     # check that it contains a license file
     if not op.exists(op.join(directory, "license.txt")):
         raise RuntimeError(f"Could not find license file in {directory}. Please visit https://surfer.nmr.mgh.harvard.edu/fswiki/License.")
+    
+    # Set subjects_dir
+    if subjects_dir is not None:
+        os.environ["SUBJECTS_DIR"] = subjects_dir
     
     
     

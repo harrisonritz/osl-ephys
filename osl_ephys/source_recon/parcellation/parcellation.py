@@ -1065,3 +1065,44 @@ def parcel_vector_to_voxel_grid(mask_file, parcellation_file, vector):
     voxel_grid = voxel_grid.reshape(mask.shape[0], mask.shape[1], mask.shape[2], order="F")
 
     return voxel_grid
+
+def convert2source_estimate(subjects_dir, data, parc=None, reference_brain='fsaverage'):
+    """ Convert parcellated data to a source estimate.
+    
+    Parameters
+    ----------
+    subjects_dir : str
+        Path to subjects directory.
+    data : mne.Evoked or mne.Epochs
+        Data to convert.
+    parc : str
+        Parcellation name.
+    reference_brain : str
+        Reference brain. Default is 'fsaverage'.
+        
+    Returns
+    -------
+    stc : mne.SourceEstimate
+        Source estimate.    
+    """
+    os.environ["SUBJECTS_DIR"] = subjects_dir
+    
+    if reference_brain is None:
+            subject = "fsaverage"
+              
+    if parc is None:
+        parc = guess_parcellation(np.ones(data.get_data(picks='misc').shape[0]))
+    
+    labels = load_parcellation(parc)
+    nparc=len(labels)
+    
+    src = mne.read_source_spaces(freesurfer_utils.get_freesurfer_files(os.environ["SUBJECTS_DIR"], reference_brain)['source_space'])
+    
+    vertices = [s["vertno"] for s in src]
+    kernel = np.zeros((src[0]['nuse'], nparc))
+    for i, l in enumerate(labels):
+        v = mne.source_space.label_src_vertno_sel(l, src)[0]
+        v = v[np.argmax([len(iv) for iv in v])]
+        kernel[v, i] = 1
+    
+    return mne.SourceEstimate((kernel, data.get_data(picks='misc')), vertices, tmin=0, tstep=1/data.info['sfreq'])   

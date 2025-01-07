@@ -696,6 +696,7 @@ def minimum_norm(
     reportdir : str, optional
         Path to report directory.
     """
+    os.environ["SUBJECTS_DIR"] = outdir
     
     if epoch_file is not None:
         data = mne.read_epochs(epoch_file, preload=True)
@@ -872,7 +873,8 @@ def parcellate(
             working_dir=f"{outdir}/{subject}/parc",
         )
         
-    elif source_method=='minimum_norm':           
+    elif source_method=='minimum_norm':    
+        os.environ["SUBJECTS_DIR"] = outdir       
         if reference_brain == 'mni/fsaverage':
             reference_brain = 'fsaverage'
         elif reference_brain == 'mri':
@@ -1226,7 +1228,8 @@ def minimum_norm_and_parcellate(
         Path to report directory.
     """
     logger.info("minimum_norm_and_parcellate")
-
+    os.environ["SUBJECTS_DIR"] = outdir
+    
     # Load sensor-level data
     if epoch_file is not None:
         logger.info("using epoched data")
