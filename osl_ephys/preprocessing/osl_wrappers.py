@@ -954,8 +954,13 @@ def zscore_present_data(dataset, userargs):
 
 def glm_add_regressor(dataset, userargs):
     """osl-ephys Batch wrapper for :py:func:`osl_ephys.preprocessing.osl_glm.add_regressor <osl_ephys.preprocessing.osl_glm.add_regressor>`.
-
+    
     Parameters
+    ----------
+    dataset: dict
+        Dictionary containing at least an MNE object with the key ``covs``.
+    userargs: dict
+        Dictionary of additional arguments containing the keys ``keys``.
     """
     logger.info("osl-ephys Stage - {0}".format("GLM Add Regressor"))
     if 'design_config' not in dataset:
@@ -1032,11 +1037,25 @@ def glm_fit(dataset, userargs):
         Input dictionary containing MNE objects that have been modified in place.
     """
     run_on_group = userargs.pop("run_on_group", False)
-    target = userargs.pop("target", "raw")
-    name = userargs.pop("name", "glm")
+    
     method = userargs.pop("method", None)
     if method is None:
         raise ValueError("method not specified")
+    target = userargs.pop("target", None)
+    if target is None:
+        if run_on_group:
+            target = "glm"
+        else:
+            if method in ['epochs', 'glm_epochs']:
+                target = "epochs"
+            elif method in ['spectrum', 'glm_spectrum']:
+                target = "raw"
+    name = userargs.pop("name", None)
+    if name is None:
+        if run_on_group:
+            name = "group_glm"
+        else:
+            name = "glm"
     metric = userargs.pop("metric", 'copes')
     
     plot_summary = userargs.pop("plot_summary", True)
