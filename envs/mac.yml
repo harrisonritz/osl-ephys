@@ -43,3 +43,4 @@ dependencies:
   - tqdm==4.66.1
   - osfclient==0.0.5
   - osl-ephys
+  - open3d=0.18.0
