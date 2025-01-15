@@ -29,6 +29,7 @@ from mne import Transform
 from mne.transforms import read_trans
 from mne.surface import write_surface
 from mne import io
+from mne.channels import make_dig_montage
 
 from numba import cfunc, carray
 from numba.types import intc, intp, float64, voidptr
@@ -1379,7 +1380,6 @@ def save_polhemus_fif(raw, subjects_dir,subject):
 
     log_or_print("Saved files to {}".format(path_to_save))
 
-
 def downsample_headshape(
     headshape,
     downsample_amount=0.015,    # average over 1.5cm
@@ -1482,6 +1482,7 @@ def downsample_headshape(
 
     return headshape
 
+
 def rotate_pointcloud(points, angle_degrees, axis='x'):
     """
     Rotates the point cloud around a specified axis.
@@ -1518,3 +1519,59 @@ def rotate_pointcloud(points, angle_degrees, axis='x'):
         raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z'.")
     
     return np.dot(points, rotation_matrix.T)
+
+
+def replace_headshape(raw, ds_headshape):
+    """
+    Replace headshape points in an MNE Raw object with downsampled points and update fiducials.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        The raw object containing the original digitization points.
+    ds_headshape : ndarray, shape (N, 3)
+        Array of downsampled headshape points (in head coordinates).
+
+    Returns
+    -------
+    raw_copy : mne.io.Raw
+        A copy of the input Raw object with the updated headshape points and montage.
+    """
+    # Get current digitization points
+    dig = raw.info['dig']
+
+    # Initialize fiducial positions
+    fid_positions = {
+        'nasion': None,
+        'lpa': None,
+        'rpa': None
+    }
+
+    # Extract fiducials from the dig points
+    for f in dig:
+        if f['coord_frame'] == 4:  # Ensure it's in the head coordinate frame
+            if f['ident'] == 2 and fid_positions['nasion'] is None:  # Nasion
+                fid_positions['nasion'] = f['r']
+            elif f['ident'] == 1 and fid_positions['lpa'] is None:  # Left Preauricular (LPA)
+                fid_positions['lpa'] = f['r']
+            elif f['ident'] == 3 and fid_positions['rpa'] is None:  # Right Preauricular (RPA)
+                fid_positions['rpa'] = f['r']
+
+    # Verify the extracted fiducials
+    if any(v is None for v in fid_positions.values()):
+        raise ValueError("One or more fiducials (nasion, LPA, RPA) not found in the head coordinate frame.")
+
+    # Create a DigMontage using the extracted fiducials and downsampled headshape points
+    montage = make_dig_montage(
+        hsp=ds_headshape,  # Downsampled headshape points
+        nasion=fid_positions['nasion'],
+        lpa=fid_positions['lpa'],
+        rpa=fid_positions['rpa'],
+        coord_frame='head'
+    )
+
+    # Create a copy of the raw object and set the new montage
+    raw_copy = raw.copy()
+    raw_copy.set_montage(montage)
+
+    return raw_copy
