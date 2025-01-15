@@ -23,7 +23,6 @@ from scipy.ndimage import generic_filter
 from scipy.spatial import KDTree
 
 import matplotlib.pyplot as plt
-import open3d as o3d
 
 from mne import Transform
 from mne.transforms import read_trans
@@ -35,6 +34,7 @@ from numba import cfunc, carray
 from numba.types import intc, intp, float64, voidptr
 from numba.types import CPointer
 
+
 import logging
 logging.getLogger("numba").setLevel(logging.WARNING)
 
@@ -43,7 +43,6 @@ from fsl import wrappers as fsl_wrappers
 from osl_ephys.source_recon.beamforming import transform_recon_timeseries
 from osl_ephys.utils.logger import log_or_print
 from osl_ephys.utils import soft_import
-
 
 def get_rhino_files(subjects_dir, subject):
     """Get paths to all RHINO files.
@@ -1442,10 +1441,8 @@ def downsample_headshape(
 
         # Print shape of the headshape without facial points
         if downsample_facial_info:
-            pcd_facial = o3d.geometry.PointCloud()
-            pcd_facial.points = o3d.utility.Vector3dVector(facial_points)
-            pcd_facial = pcd_facial.voxel_down_sample(voxel_size=downsample_facial_info_amount)
-            facial_points = np.asarray(pcd_facial.points)
+            facial_points = grid_average_downsample(facial_points, downsample_facial_info_amount)
+
 
     # Remove points above z-limit
     if remove_zlim is not None:
@@ -1462,10 +1459,7 @@ def downsample_headshape(
 
     # Downsample the overall headshape
     if method == 'gridaverage':
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(headshape)
-        pcd = pcd.voxel_down_sample(voxel_size=downsample_amount)
-        headshape = np.asarray(pcd.points)
+        headshape = grid_average_downsample(headshape,downsample_amount)
     else:
         raise ValueError("Unsupported downsampling method: {}".format(method))
 
@@ -1519,6 +1513,60 @@ def rotate_pointcloud(points, angle_degrees, axis='x'):
         raise ValueError("Invalid axis. Choose from 'x', 'y', or 'z'.")
     
     return np.dot(points, rotation_matrix.T)
+
+import numpy as np
+
+def grid_average_downsample(point_cloud, voxel_size):
+    """
+    Downsample a point cloud using grid averaging.
+
+    This function divides the space into a voxel grid, computes the average 
+    position of points within each voxel, and returns a downsampled point cloud.
+
+    Parameters
+    ----------
+    point_cloud : numpy.ndarray
+        A numpy array of shape (N, 3) representing the point cloud, where N 
+        is the number of points, and each point has (x, y, z) coordinates.
+
+    voxel_size : float
+        The size of the voxel grid. Points within a grid cell are averaged 
+        to compute the downsampled point.
+
+    Returns
+    -------
+    downsampled_cloud : numpy.ndarray
+        A numpy array of shape (M, 3) representing the downsampled point cloud, 
+        where M is the number of voxels containing points.
+
+    Notes
+    -----
+    - This method assumes the input point cloud is dense and unstructured.
+    - For very large point clouds, consider optimizing memory usage.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> point_cloud = np.random.rand(1000, 3)  # Generate random point cloud
+    >>> voxel_size = 0.05
+    >>> downsampled_cloud = grid_average_downsample(point_cloud, voxel_size)
+    >>> print(downsampled_cloud.shape)
+    """
+    # Quantize the coordinates into voxel indices
+    voxel_indices = np.floor(point_cloud / voxel_size).astype(np.int32)
+    
+    # Use a dictionary to collect points in the same voxel
+    voxel_dict = {}
+    for idx, point in zip(voxel_indices, point_cloud):
+        key = tuple(idx)
+        if key not in voxel_dict:
+            voxel_dict[key] = []
+        voxel_dict[key].append(point)
+    
+    # Compute the average for each voxel
+    downsampled_cloud = np.array([np.mean(voxel_dict[key], axis=0) for key in voxel_dict])
+    
+    return downsampled_cloud
 
 
 def replace_headshape(raw, ds_headshape):
