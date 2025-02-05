@@ -1,7 +1,7 @@
 import os
 from dask.distributed import Client
 
-import osl
+import osl_ephys
 
 
 if __name__ == "__main__": 
@@ -39,14 +39,14 @@ if __name__ == "__main__":
       """
 
   # Study utils enables selection of existing paths using various wild cards
-  study = osl.utils.Study(os.path.join(basedir, "sub{sub_id}/MEG/run_{run_id}_raw.fif"))
+  study = osl_ephys.utils.Study(os.path.join(basedir, "sub{sub_id}/MEG/run_{run_id}_raw.fif"))
   inputs = sorted(study.get())
   
   # specify session names and output directory
   subjects = [f"sub{i+1:03d}-run{j+1:02d}" for i in range(19) for j in range(6)]
   outdir = os.path.join(basedir, "processed")
 
-  osl.preprocessing.run_proc_batch(
+  osl_ephys.preprocessing.run_proc_batch(
     config,
     inputs,
     subjects,
