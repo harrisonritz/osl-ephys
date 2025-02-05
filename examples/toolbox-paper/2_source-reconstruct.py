@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from dask.distributed import Client
-from osl import source_recon, utils
+from osl_ephys import source_recon, utils
 
 source_recon.setup_fsl("~/fsl") # FSL needs to be installed
 
