@@ -3,7 +3,7 @@ import os
 from glob import glob
 from dask.distributed import Client
 
-from osl import source_recon, utils
+from osl_ephys import source_recon, utils
 
 source_recon.setup_fsl("~/fsl")
 
