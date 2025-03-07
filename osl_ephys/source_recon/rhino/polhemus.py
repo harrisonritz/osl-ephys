@@ -7,59 +7,54 @@
 #          Mats van Es <mats.vanes@psych.ox.ac.uk>
 
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import mne
 from mne.io import read_info
 from mne.io.constants import FIFF
 
-import sys
+import osl_ephys.source_recon.rhino.utils as rhino_utils
 from osl_ephys.source_recon.rhino.coreg import get_coreg_filenames
+from osl_ephys.source_recon.rhino.surfaces import get_surfaces_filenames
 from osl_ephys.utils.logger import log_or_print
 
-def extract_polhemus_from_info(
-    fif_file,
-    headshape_outfile,
-    nasion_outfile,
-    rpa_outfile,
-    lpa_outfile,
+
+def get_polhemus_from_info(
+    info,
     include_eeg_as_headshape=False,
     include_hpi_as_headshape=True,
 ):
-    """Extract polhemus from FIF info.
-
-    Extract polhemus fids and headshape points from MNE raw.info and write them out in the required file format for rhino (in head/polhemus space in mm).
-
-    Should only be used with MNE-derived .fif files that have the expected digitised points held in info['dig'] of fif_file.
+    """Get polhemus from fif file.
 
     Parameters
     ----------
-    fif_file : string
-        Full path to MNE-derived fif file.
-    headshape_outfile : string
-        Filename to save headshape points to.
-    nasion_outfile : string
-        Filename to save nasion to.
-    rpa_outfile : string
-        Filename to save rpa to.
-    lpa_outfile : string
-        Filename to save lpa to.
+    info : MNE Info object
+        Info object.
     include_eeg_as_headshape : bool, optional
         Should we include EEG locations as headshape points?
     include_hpi_as_headshape : bool, optional
         Should we include HPI locations as headshape points?
+
+    Returns
+    -------
+    polhemus_headshape : np.ndarray
+        3D coordinates for each headshape point.
+    polhemus_rpa : np.ndarray
+        3D coordinates for rpa.
+    polhemus_lpa : np.ndarray
+        3D coordinates for lpa.
+    polhemus_nasion : np.ndarray
+        3D coordinates for nasion.
     """
-    log_or_print("Extracting polhemus from fif info")
 
     # Lists to hold polhemus data
     polhemus_headshape = []
     polhemus_rpa = []
     polhemus_lpa = []
     polhemus_nasion = []
-
-    # Read info from fif file
-    info = read_info(fif_file)
 
     # Get fiducials/headshape points
     for dig in info["dig"]:
@@ -84,6 +79,82 @@ def extract_polhemus_from_info(
         elif dig["kind"] == FIFF.FIFFV_POINT_HPI and include_hpi_as_headshape:
             polhemus_headshape.append(dig["r"])
 
+    polhemus_headshape = np.array(polhemus_headshape)
+    polhemus_rpa = np.array(polhemus_rpa)
+    polhemus_lpa = np.array(polhemus_lpa)
+    polhemus_nasion = np.array(polhemus_nasion)
+
+    return polhemus_headshape, polhemus_rpa, polhemus_lpa, polhemus_nasion
+    
+
+def extract_polhemus_from_info(
+    fif_file,
+    headshape_outfile,
+    nasion_outfile,
+    rpa_outfile,
+    lpa_outfile,
+    include_eeg_as_headshape=False,
+    include_hpi_as_headshape=True,
+    rescale=None,
+):
+    """Extract polhemus from FIF info.
+
+    Extract polhemus fids and headshape points from MNE raw.info and write
+    them out in the required file format for rhino (in head/polhemus space
+    in mm).
+
+    Should only be used with MNE-derived .fif files that have the expected
+    digitised points held in info['dig'] of fif_file.
+
+    Parameters
+    ----------
+    fif_file : string
+        Full path to MNE-derived fif file.
+    headshape_outfile : string
+        Filename to save headshape points to.
+    nasion_outfile : string
+        Filename to save nasion to.
+    rpa_outfile : string
+        Filename to save rpa to.
+    lpa_outfile : string
+        Filename to save lpa to.
+    include_eeg_as_headshape : bool, optional
+        Should we include EEG locations as headshape points?
+    include_hpi_as_headshape : bool, optional
+        Should we include HPI locations as headshape points?
+    rescale : list, optional
+        List containing scaling factors for the x,y,z coordinates
+        of the headshape points and fiducials: [xscale, yscale, zscale].
+    """
+    log_or_print("Extracting polhemus from fif info")
+
+    # Read info from fif file
+    info = read_info(fif_file)
+
+    # Get coordinates from the fif file
+    polhemus_headshape, polhemus_rpa, polhemus_lpa, polhemus_nasion = get_polhemus_from_info(
+        info=info,
+        include_eeg_as_headshape=include_eeg_as_headshape,
+        include_hpi_as_headshape=include_hpi_as_headshape,
+    )
+
+    # Rescale
+    if rescale is not None:
+        if not isinstance(rescale, list) or len(rescale) != 3:
+            raise ValueError("rescale must be a list: [xscale, yscale, zscale].")
+
+        log_or_print("Rescaling polhemus")
+
+        if len(polhemus_headshape) > 0:
+            polhemus_headshape[:, 0] *= rescale[0]  # x
+            polhemus_headshape[:, 1] *= rescale[1]  # y
+            polhemus_headshape[:, 2] *= rescale[2]  # z
+
+        for fid in [polhemus_rpa, polhemus_lpa, polhemus_nasion]:
+            fid[0] *= rescale[0]  # x
+            fid[1] *= rescale[1]  # y
+            fid[2] *= rescale[2]  # z
+
     # Check if info is from a CTF scanner
     if info["dev_ctf_t"] is not None:
         log_or_print("Detected CTF data")
@@ -104,13 +175,13 @@ def extract_polhemus_from_info(
         polhemus_headshape = [0, 0, 0]
 
     # Save
-    log_or_print(f"saved: {nasion_outfile}")
+    log_or_print(f"Saved: {nasion_outfile}")
     np.savetxt(nasion_outfile, polhemus_nasion * 1000)
-    log_or_print(f"saved: {rpa_outfile}")
+    log_or_print(f"Saved: {rpa_outfile}")
     np.savetxt(rpa_outfile, polhemus_rpa * 1000)
-    log_or_print(f"saved: {lpa_outfile}")
+    log_or_print(f"Saved: {lpa_outfile}")
     np.savetxt(lpa_outfile, polhemus_lpa * 1000)
-    log_or_print(f"saved: {headshape_outfile}")
+    log_or_print(f"Saved: {headshape_outfile}")
     np.savetxt(headshape_outfile, np.array(polhemus_headshape).T * 1000)
 
     if info["dev_ctf_t"] is not None:
@@ -464,3 +535,46 @@ def extract_polhemus_from_elc(outdir, subject, filepath, remove_headshape_near_n
     np.savetxt(filenames["polhemus_lpa_file"], lpa)
     log_or_print(f"saved: {filenames['polhemus_headshape_file']}")
     np.savetxt(filenames["polhemus_headshape_file"], headshape)
+
+
+def rescale_sensor_positions(fif_file, xscale=1, yscale=1, zscale=1):
+    """Rescale the x, y, z coordinates of sensors.
+
+    Parameters
+    ----------
+    fif_file : str
+        Path to fif file.
+    xscale : float, optional
+        x coordinate scale factor.
+    yscale : float, optional
+        y coordinate scale factor.
+    zscale : float, optional
+        z coordinate scale factor.
+    """
+
+    # fif file containing the preprocessed data
+    if not os.path.exists(fif_file):
+        raise ValueError(f"{fif_file} is missing.")
+
+    # Load montage
+    raw = mne.io.read_raw_fif(fif_file, preload=True)
+
+    # Check if rescaling has already been applied
+    if "rescale_sensor_positions" in raw.info["description"]:
+        raise ValueError(f"sensor positions have already been rescaled in {fif_file}.")
+
+    # Move the sensors
+    log_or_print(f"Rescaling with xscale={xscale}, yscale={yscale}, zscale={zscale}")
+    montage = raw.get_montage()
+    for d in montage.dig:
+        d["r"][0] *= xscale
+        d["r"][1] *= yscale
+        d["r"][2] *= zscale
+
+    # Add scaling info to the fif description
+    raw.info["description"] += f"\n\n%% rescale_sensor_positions start %%\nxscale={xscale}, yscale={yscale}, zscale={zscale}\n%% rescale_sensor_positions end %%"
+
+    # Save
+    raw.set_montage(montage)
+    log_or_print(f"Overwritting {fif_file} with new sensor positions")
+    raw.save(fif_file, overwrite=True)
