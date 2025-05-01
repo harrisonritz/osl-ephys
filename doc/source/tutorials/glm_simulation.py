@@ -82,16 +82,29 @@ plt.text(5, 2.5, '=')
 
 
 # Compute the spectrum with Welch's method
-f, pxx = sails.stft.periodogram(xx, nperseg=sample_rate, fs=sample_rate)
+pdg = sails.stft.periodogram(xx, nperseg=sample_rate, fs=sample_rate)
+
+#%%
+# ``pdg`` is a very simple python object that contains our spectrum result. It hold four pieces of information.
+#
+# - ``pdg.config`` : the technical specification detailing how the spectrum was computed
+# - ``pdg.f`` : the frequency values of the result
+# - ``pdg.t`` : the time values of the sliding windows in the result (if they are present)
+# - ``pdg.spectrum`` : the spectrum itself
+#
+# Let's take a look at the result.
 
 # Simple plot
 plt.figure(figsize=(7, 7))
-plt.plot(f, pxx)
-plt.title("Welch's method")
+plt.plot(pdg.f, pdg.spectrum)
+plt.title("Welch's Periodogram")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power')
+plt.tight_layout()
 
 #%%
+# This is the classic first approach to spectrum analysis.
+#
 # We see two clear peaks, one large peak at 10Hz and a smaller peak at 22Hz. The 22Hz peak is smaller due to it's decreasing amplitude in the time-domain.
 # 
 # Under the hood, Welch's method computes many Fourier transforms on sliding window data segments across the dataset - this is also known as a Short Time Fourier Transform (STFT).
@@ -100,25 +113,24 @@ plt.ylabel('Power')
 # 
 
 # Compute the short-time Fourier transform (unaveraged periodogram)
-f, pxx = sails.stft.periodogram(xx, nperseg=sample_rate, fs=sample_rate, average=None)
+pdg = sails.stft.periodogram(xx, nperseg=sample_rate, fs=sample_rate, average=None)
 
 # Print out some helpful infoo
-t = np.linspace(0, seconds, pxx.shape[0]+2)[1:-1]  # Compute a time vector
 print('-'*20)
-print('{} time segments'.format(len(t)))
-print('{} frequency bins'.format(len(f)))
-print('{}Hz frequency resolution'.format(np.diff(f)[0]))
+print('{} time segments'.format(len(pdg.t)))
+print('{} frequency bins'.format(len(pdg.f)))
+print('{}Hz frequency resolution'.format(np.diff(pdg.f)[0]))
 print('-'*20)
 
 # Simple visualisation
 plt.figure(figsize=(18,9))
 plt.subplot(121)
-plt.pcolormesh(f, t, pxx, cmap='hot_r')
+plt.pcolormesh(pdg.f, pdg.t, pdg.spectrum, cmap='hot_r')
 plt.title("STFT")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Time (seconds)')
 plt.subplot(122)
-plt.plot(f, pxx.mean(axis=0))
+plt.plot(pdg.f, pdg.spectrum.mean(axis=0))
 plt.title("Welch's method")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power')
@@ -129,27 +141,25 @@ plt.ylabel('Power')
 # We've set ``nperseg=sample_rate`` in this example, which is typically a sensible starting point. Let's try a shorter value and see what happens.
 
 
-
 # Compute the short-time Fourier transform (unaveraged periodogram)
-f, pxx = sails.stft.periodogram(xx, nperseg=sample_rate//4, fs=sample_rate, average=None)
+pdg = sails.stft.periodogram(xx, nperseg=sample_rate//4, fs=sample_rate, average=None)
 
 # Print out some helpful infoo
-t = np.linspace(0, seconds, pxx.shape[0]+2)[1:-1]  # Compute a time vector
 print('-'*20)
-print('{} time segments'.format(len(t)))
-print('{} frequency bins'.format(len(f)))
-print('{}Hz frequency resolution'.format(np.diff(f)[0]))
+print('{} time segments'.format(len(pdg.t)))
+print('{} frequency bins'.format(len(pdg.f)))
+print('{}Hz frequency resolution'.format(np.diff(pdg.f)[0]))
 print('-'*20)
 
 # Simple visualisation
 plt.figure(figsize=(18,9))
 plt.subplot(121)
-plt.pcolormesh(f, t, pxx, cmap='hot_r')
+plt.pcolormesh(pdg.f, pdg.t, pdg.spectrum, cmap='hot_r')
 plt.title("STFT")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Time (seconds)')
 plt.subplot(122)
-plt.plot(f, pxx.mean(axis=0))
+plt.plot(pdg.f, pdg.spectrum.mean(axis=0))
 plt.title("Welch's method")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power')
@@ -164,33 +174,80 @@ plt.ylabel('Power')
 
 
 # Compute the short-time Fourier transform (unaveraged periodogram)
-f, pxx = sails.stft.periodogram(xx, nperseg=sample_rate*3, fs=sample_rate, average=None)
+pdg = sails.stft.periodogram(xx, nperseg=sample_rate*3, fs=sample_rate, average=None)
 
 # Print out some helpful infoo
-t = np.linspace(0, seconds, pxx.shape[0]+2)[1:-1]  # Compute a time vector
 print('-'*20)
-print('{} time segments'.format(len(t)))
-print('{} frequency bins'.format(len(f)))
-print('{}Hz frequency resolution'.format(np.diff(f)[0]))
+print('{} time segments'.format(len(pdg.t)))
+print('{} frequency bins'.format(len(pdg.f)))
+print('{}Hz frequency resolution'.format(np.diff(pdg.f)[0]))
 print('-'*20)
 
 # Simple visualisation
 plt.figure(figsize=(18,9))
 plt.subplot(121)
-plt.pcolormesh(f, t, pxx, cmap='hot_r')
+plt.pcolormesh(pdg.f, pdg.t, pdg.spectrum, cmap='hot_r')
 plt.title("STFT")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Time (seconds)')
 plt.subplot(122)
-plt.plot(f, pxx.mean(axis=0))
+plt.plot(pdg.f, pdg.spectrum.mean(axis=0))
 plt.title("Welch's method")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power')
 
 #%%
-# As we'd expect - the longer window results in a higher frequency resolution and fewer windows. There is no right or wrong choice for window length as different analyses may want to emphasise one or the other depending on the hypothesis in question. this trade off between time resolution and frequency resolution just needs to be set to provide a useful representation of the data for the case in hand. We recommend trying a range of values to explore it's effect when first exploring a new dataset.
+# As we'd expect by now, the longer window results in a higher frequency resolution and fewer windows.
+#
+# There is no right or wrong choice for window length as different analyses may want to emphasise one or the other depending on the research question. This trade off between time resolution and frequency resolution just needs to be set to provide a useful representation of the data for the case in hand. We recommend trying a range of values to explore it's effect when first exploring a new dataset.
 # 
+
+# Challenge 1
+# ***********
+#
+# Can you tweak the code below to change the ``sample_rate`` of the simulated data instead of the window length?
+#
+# Try a few different values (eg 64 and 256, or any positive value that your like..), what aspect of the spectrum is altered when we change the sample rate?
 # 
+
+# Define some parameters
+sample_rate = 128
+seconds = 10
+time = np.linspace(0, seconds, seconds*sample_rate)
+
+# Stationary oscillation
+f1 = np.sin(2*np.pi*10*time)
+# Decreasing amplitude oscillatoin
+f2_amp = np.linspace(1, 0.5, seconds*sample_rate)
+f2 = f2_amp * np.sin(2*np.pi*22*time)
+
+# Final signal
+xx = f1 + f2
+
+# Compute the short-time Fourier transform (unaveraged periodogram)
+pdg = sails.stft.periodogram(xx, nperseg=sample_rate*3, fs=sample_rate, average=None)
+
+# Print out some helpful infoo
+print('-'*20)
+print('{} time segments'.format(len(pdg.t)))
+print('{} frequency bins'.format(len(pdg.f)))
+print('{}Hz frequency resolution'.format(np.diff(pdg.f)[0]))
+print('-'*20)
+
+# Simple visualisation
+plt.figure(figsize=(18,9))
+plt.subplot(121)
+plt.pcolormesh(pdg.f, pdg.t, pdg.spectrum, cmap='hot_r')
+plt.title("STFT")
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Time (seconds)')
+plt.subplot(122)
+plt.plot(pdg.f, pdg.spectrum.mean(axis=0))
+plt.title("Welch's method")
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Power')
+
+
 # But what about those dynamics?
 # ******************************
 #
@@ -443,17 +500,19 @@ cov = {'Linear': np.linspace(-1, 1, seconds*sample_rate)}
 glmspec = osl_ephys.glm.glm_spectrum(yy, nperseg=sample_rate, fs=sample_rate, reg_ztrans=cov)
 
 plt.figure(figsize=(18, 9))
-plt.subplot(121)
+plt.subplot(131)
 plt.plot(glmspec.f, glmspec.model.betas[0, :])
-plt.title("Mean Cope-Spectr")
+plt.title("Mean Cope-Spectrum")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power')
-plt.subplot(122)
+plt.subplot(132)
 plt.plot(glmspec.f, glmspec.model.copes[1, :])
-plt.plot(glmspec.f, np.sqrt(glmspec.model.varcopes[1, :]))
 plt.title("Linear Trend Cope-Spectrum")
 plt.xlabel('Frequency (Hz)')
-
+plt.subplot(133)
+plt.plot(glmspec.f, np.sqrt(glmspec.model.varcopes[1, :]))
+plt.title("Linear Trend Varcope-Spectrum")
+plt.xlabel('Frequency (Hz)')
 
 # The t-statistic is then the cope divided by the square root of the varcope.
 plt.figure(figsize=(9,6))
@@ -462,6 +521,53 @@ plt.title("Linear Trend t-spectrum")
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('t-statistic')
 plt.ylim(-20, 20)
+
+#%%
+# Spectra as Regressions
+# ***********
+#
+# With this framework, we can apply any and all of the methods of multiple regression to our spectra. 
+#
+# For example, we can easily plot metrics such as the R-square spectrum to explore how much variance is explained at each frequency in the spectrum
+
+plt.figure(figsize=(7, 7))
+plt.plot(glmspec.f, glmspec.model.r_square[0, :])
+plt.title("R-square Spectrum")
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Variance Explained')
+
+
+#%% 
+# Challenge 2
+# ***********
+# As we now have a regression model, we can compute the spectrum that the GLM-Spectrum would predict for different combinations of the predictor variables.
+#
+# This is a linear prediction with a classic standard form. For the specific model we have been using, the equation looks like this.
+#
+# spectrum = InterceptParameter * InterceptValue + LinearParameter * LinearValue
+#
+# We can see the predictor values by looking at the design matrix.
+
+print(glmsp.design.design_matrix)
+
+# The intercept value is always the same with a value of 1. This is as we expect as the intercept does not vary with the values of our other predictor variables. The Linear predictor values vary between around -1.64 and +1.64, these slightly odd values are what we get when we z-transform a straight line.
+#
+# We can see the regression parameter estimates in the fitted model, let's look specifically at the betas for 22Hz. Remember we have vectors of coefficents for every frequency.
+
+print(glmsp.model.betas)
+
+# Now the challenge, can you use the information above to write some code to plot the GLM model predicted spectrum for the start, middle and end of the data?
+
+start_spec = glmsp.model.betas[0, :] * 1 + glmsp.model.betas[1, :] * -1.64
+middle_spec = glmsp.model.betas[0, :] * 1 + glmsp.model.betas[1, :] * 0
+end_spec = glmsp.model.betas[0, :] * 1 + glmsp.model.betas[1, :] * +1.64
+
+plt.figure()
+plt.plot(glmsp.f,start_spec)
+plt.plot(glmsp.f,middle_spec)
+plt.plot(glmsp.f,end_spec)
+plt.legend(['Start', 'Middle', 'End'])
+plt.title('GLM predicted spectra')
 
 #%%
 # OPTIONAL - Confound regression in detail
