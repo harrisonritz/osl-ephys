@@ -10,18 +10,17 @@ This tutorial will introduce the concept of power spectrum estimation using the 
 Getting started
 ***************
 
-We start with some preparation, let's import ``numpy``, ``scipy.signal`` and ``osl_ephys`` for analysis and matplotlib for some visulistions.
+We start with some preparation, let's import ``numpy``, ``scipy.signal`` and ``osl_ephys`` for analysis and ``matplotlib`` for some visulistions.
 
 """
 
 
-
+import matplotlib
 import numpy as np
-from scipy import signal
-import osl_ephys
 import sails
 
-import matplotlib
+import osl_ephys
+
 font = {'size' : '22'}
 
 matplotlib.rc('font', **font)
@@ -641,7 +640,6 @@ fig = glmsp_artefact_unitmax.design.plot_summary()
 # Let’s look at single frequency, and visualise how the power at that frequency varies over time as a histogram, with the mean power estimate annotated by a black vertical line.
 
 
-
 freq_idx = 45
 
 # Mean from simple model
@@ -802,8 +800,10 @@ plt.title('Constant + unitmax(artefact)', fontsize=16)
 
 #%%
 # Our three panels share the same y-axis scale. Whilst the intercept of the first two models describes the centre of the whole distribution. In contrast, the inclusion of the non-zero mean covariate in the third model changes this drastically. It's intercept models the centre of the data distribution where the artefact covariate is zero. As a result the intercept estimate is much smaller than the other two.
-#
+
+
+#%%
 # Futher reading
 # **************
 # 
-#   Quinn, A. J., Atkinson, L., Gohil, C., Kohl, O., Pitt, J., Zich, C., Nobre, A. C., & Woolrich, M. W. (2022). The GLM-Spectrum: A multilevel framework for spectrum analysis with covariate and confound modelling. Cold Spring Harbor Laboratory. https://doi.org/10.1101/2022.11.14.516449 
+#   Andrew J. Quinn, Lauren Z. Atkinson, Chetan Gohil, Oliver Kohl, Jemma Pitt, Catharina Zich, Anna C. Nobre, Mark W. Woolrich; The GLM-spectrum: A multilevel framework for spectrum analysis with covariate and confound modelling. Imaging Neuroscience 2024; 2 1–26. doi: https://doi.org/10.1162/imag_a_00082 

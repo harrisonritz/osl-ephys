@@ -351,6 +351,51 @@ class ClusterPermuteGLMSpectrum(SensorClusterPerm):
 # GLM-Spectrum helper functions that take raw objects (or numpy arrays with MNE
 # dim-order), compute GLM-Spectra and return class objects containing the result
 
+
+def group_glm_spectrum_from_array(fl_data, design_config=None, datainfo=None, 
+                                  spectrum_config=None, info=None,
+                                  fl_contrast_names=None):
+    """Compute a group GLM-Spectrum from an array of first-level spectra
+
+
+    Parameters
+    ----------
+    fl_data : array_like
+        An array containing first level power spectra with the first two dimensions being
+        number of participants and then any first-level contrasts.
+    design_config : :py:class:`glmtools.design.DesignConfig <glmtools.design.DesignConfig>`
+        The design specification for the group level model (Default value = None)
+    datainfo : dict
+        Dictionary of data values to use as covariates. The length of each
+        covariate must match the number of input GLM-Spectra (Default value =
+        None)
+    spectrum_config : :py:class:`sails.stft.GLMPeriodogramConfig <sails.stft.GLMPeriodogramConfig>`
+        Configuration of spectrum estimate
+    info : :py:class:`mne.io.meas_info.Info <mne.io.meas_info.Info>`
+        Specification of electrophysiology data
+
+    Returns
+    -------
+    GroupSensorGLMSpectrum
+        Group GLM results
+
+    """
+    datainfo = {} if datainfo is None else datainfo
+
+    group_data = glm.data.TrialGLMData(data=fl_data, **datainfo)
+
+    if design_config is None:
+        design_config = glm.design.DesignConfig()
+        design_config.add_regressor(name='Mean', rtype='Constant')
+        design_config.add_simple_contrasts()
+
+    design = design_config.design_from_datainfo(group_data.info)
+    model = glm.fit.OLSModel(design, group_data)
+
+    return GroupSensorGLMSpectrum(model, design, spectrum_config, info, 
+                                  data=group_data, fl_contrast_names=fl_contrast_names)
+
+
 def group_glm_spectrum(inspectra, design_config=None, datainfo=None, metric='copes'):
     """Compute a group GLM-Spectrum from a set of first-level GLM-Spectra.
 

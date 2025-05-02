@@ -9,16 +9,19 @@ We will analyse the power spectra from the Wakeman & Henson face processing data
 We start with some preparation, let's import our modules as make the default font size for figures a little larger.
 """
 
-import numpy as np
-from scipy import signal
-import osl_ephys
-import os
-import sails
-import glmtools as glm
-import mne
-from pprint import pprint
+#import os
+#from pprint import pprint
 
+import glmtools as glm
 import matplotlib
+import mne
+import numpy as np
+import pandas as pd
+#import sails
+from scipy import signal
+
+import osl_ephys
+
 font = {'size' : '18'}
 
 matplotlib.rc('font', **font)
@@ -35,7 +38,8 @@ import matplotlib.pyplot as plt
 
 
 preprocessed_meg = 'sub-09_ses-meg_task-facerecognition_run-01_meg_preproc_raw.fif'
-
+preprocessed_meg = '/Users/andrew/Downloads/mf2pt2_sub-CC110037_ses-rest_task-rest_megtransdef_preproc-raw.fif'
+"""
 if not os.path.exists(preprocessed_meg):
     print('Preprocessed MEG data not found, downloading 160MB...')
     os.system(f"osf -p zxb6c fetch GeneralLinearModelling/{preprocessed_meg}")
@@ -61,6 +65,7 @@ else:
     os.system(f"unzip -o {name}.zip -d {name}")
     os.remove(f"{name}.zip")
     first_levels = osl_ephys.utils.Study(fl_base)
+"""
 
 #%%
 # ``preprocessed_meg`` is now a path to a ``fif`` file containing a processed dataset and ``first_levels`` is osl-ephys study object which contains all first-level GLM-Spectra.
@@ -97,9 +102,9 @@ raw = raw.set_montage(mon)
 # We'll truncate the spectrum to values between 1.5Hz and 95Hz to clip parts of the spectrum that have been affected by bandpass filtering during preprocessing
 
 
-
-
-glmspec1 = osl_ephys.glm.glm_spectrum(raw, fmin=1.5, fmax=95)
+glmspec1 = osl_ephys.glm.glm_spectrum(raw, fmin=1, fmax=95, 
+                                      nperseg=int(raw.info['sfreq']*2),
+                                      mode='magnitude', standardise_data=True,)
 
 #%%
 # The GLM equivalent to this approach is to fit a model with a single constant regressor. Let's take a look at the design matrix to confim that the model is as expected
@@ -143,7 +148,7 @@ glmspec1.plot_sensor_spectrum(0, ax=ax, sensor_proj=True, base=0.5)
 
 plt.figure(figsize=(9,6))
 ax = plt.subplot(111)
-glmspec1.plot_joint_spectrum(freqs=[10.5, 15], base=0.5, ax=ax)
+glmspec1.plot_joint_spectrum(freqs=[5, 11, 15, 22], base=0.5, ax=ax)
 
 #%%
 # As shown in the simulations, the critical choice for determining the resolution of a sliding window based spectrum is the sliding window length set by ``nperseg``. By default, ``glm_spectrum`` will set the sliding window length to be equivalent to the data sampling rate if a ``Raw`` object is passed as the input - though we can override this default by specifying our own value for ``nperseg``.
@@ -196,7 +201,9 @@ cons = {'EOG': np.abs(eogs)[1, :],
         'BadSegs': bads}
 
 # Compute the GLM-Spectrum
-glmspec2 = osl_ephys.glm.glm_spectrum(raw, fmin=1.5, fmax=95, reg_ztrans=covs, reg_unitmax=cons)
+glmspec2 = osl_ephys.glm.glm_spectrum(raw, fmin=1, fmax=95, nperseg=int(raw.info['sfreq']*2),
+                                      mode='magnitude', standardise_data=True,
+                                      reg_ztrans=covs, reg_unitmax=cons)
 
 
 # First, let's check the design matrix of our new model.
@@ -219,7 +226,7 @@ plt.subplots_adjust(wspace=0.3, hspace=0.3)
 
 for ii in range(4):
     ax = plt.subplot(2, 2, ii+1)
-    glmspec2.plot_joint_spectrum(contrast=ii, freqs=[3, 10, 15], ax=ax, base=0.5)
+    glmspec2.plot_joint_spectrum(contrast=ii, freqs=[3, 11, 15], ax=ax, base=0.5)
     plt.title(glmspec2.design.contrast_names[ii])
 
 #%%
@@ -237,8 +244,6 @@ for ii in range(4):
 # 
 # We can explore the relationship between our regressors by exploring the 'efficiency' of the design matrix.
 #  
-
-
 
 
 fig = glmspec2.design.plot_efficiency()
@@ -296,29 +301,32 @@ for ii in range(4):
 # Let's run a group analysis to illustrate these principles. We start by finding the our datafiles on disk. These files contain first-level GLM-Spectra that have already been fitted for you.
 
 
+fl_data = np.load('/Users/andrew/Downloads/camcan_fl_data.npy')
+fl_contrast_names = ['Intercept', 'LinearTime', 'HeartRate', 'VEOG', 'BadSegments']
+# Load the MNE info and frequency vector for this data
 
-fl_dir = 'osl-ephys_workshop_glm-spectrum_first-levels'
-fl_base = os.path.join(fl_dir, '{subj}_ses-meg_task-facerecognition_{run}_meg_glm-spec.pkl')
-
-first_levels = osl_ephys.utils.Study(fl_base)
+# We take 'mags' as this group analysis was run on combined gradiometers so we only have 102 channels.
+ginfo = mne.io.read_raw_fif(preprocessed_meg, preload=False).pick_types(meg='mag').info
+# We can use hte same frequency vector as for the first levels
+gfreq = glmspec2.f  
 
 #%%
-# We can visualise the individual results of the first run of the first 12 subjects. Note that the spectra are extremely variable between recordings. It can be hard to see whether there is anything consistent happening by eye. This is why we need the second group level model.
+# We can visualise the individual results of the first run of the first 25 subjects. Note that the spectra are extremely variable between recordings. It can be hard to see whether there is anything consistent happening by eye. This is why we need the second group level model.
 
-
-run = 'run-01'
 
 contrast = 0  # The first contrast refers to the 'Constant' regressor
 
 plt.figure(figsize=(18,18))
 plt.subplots_adjust(hspace=0.5)
-for ii in range(12):
-    subj = 'sub-{}'.format(str(ii+1).zfill(2))
-    fpath = first_levels.get(subj=subj, run=run)[0]
-    
-    glmsp = osl_ephys.glm.read_glm_spectrum(fpath)
-    ax = plt.subplot(3, 4, ii+1)
-    glmsp.plot_sensor_spectrum(contrast=contrast, base=0.5, ax=ax, title=subj)
+for ii in range(25):
+    ax = plt.subplot(5, 5, ii+1)
+    osl_ephys.glm.plot_sensor_spectrum(gfreq, fl_data[ii, contrast, :, :].T, ginfo, ax=ax)
+    ax.set_ylim(0, 0.002)
+    ax.set_yticklabels([])
+    if np.remainder(ii+1, 5) != 1:
+        ax.set_yticklabels([])
+plt.suptitle('First level spectrum for 25 participants')
+
 
 #%%
 # The overall GLM-Spectra are already variable across datasets, but remember that we've modelled 4 regressors the first level. We can also visualse these in the same way.
@@ -326,59 +334,61 @@ for ii in range(12):
 # Our group model will describe how the first level COPEs vary over subjects, at, for example, each sensor and frequency. We're not just looking for consistency in the mean-spectrum, but can also look for group effects of the first-level effect of EOG. Let's take a look at the first level EOG spectra next.
 
 
-
-run = 'run-01'
-
-contrast = 2  # The third contrast refers to the 'EOG' regressor
+contrast = 3
 
 plt.figure(figsize=(18,18))
 plt.subplots_adjust(hspace=0.5)
-for ii in range(12):
-    subj = 'sub-{}'.format(str(ii+1).zfill(2))
-    fpath = first_levels.get(subj=subj, run=run)[0]
-    
-    glmsp = osl_ephys.glm.read_glm_spectrum(fpath)
-    ax = plt.subplot(3, 4, ii+1)
-    glmsp.plot_sensor_spectrum(contrast=contrast, base=0.5, ax=ax, title=subj)
+for ii in range(25):
+    ax = plt.subplot(5, 5, ii+1)
+    osl_ephys.glm.plot_sensor_spectrum(gfreq, fl_data[ii, contrast, :, :].T, ginfo, ax=ax)
+    ax.set_ylim(-0.0025, 0.0025)
+    if np.remainder(ii+1, 5) != 1:
+        ax.set_yticklabels([])
+plt.suptitle('First level EOG effect for 25 participants')
+
 
 #%%
 # Again, there is lot of variability, some runs show a strong positive effect in low frequencies in green/yellow channels (these correspond to frontal sensors). Potentially suggesting that some of the eye movemenet artefact has not been removed during preprocessing.
 #
+# Try taking a look at the other first level effects using these indices:
+# - 0 : average spectrum
+# - 1 : linear effect over time
+# - 2 : Heart rate
+# - 3 : VEOG
+# - 4 : marked bad segments in the data
+#
+# You might have to adjust the y-axis limits to clearly see the patterns for some predictors.
+
+#%%
 # Building a group model
 # **********************
 # 
 # Next we're going to specify our group level design matrix. We have 96 datasets in this analysis with 6 data recordings from each of 16 participants. Let's create some vectors in a dictionary that specify which participant and run each recording belongs to..
 
-group_info = {'subjs': np.repeat(np.arange(16), 6),
-              'runs': np.tile(np.arange(6), 16)}
+group_covs = pd.read_csv('/Users/andrew/Downloads/camcan_group_covs.csv').to_dict(orient='list')
 
+# The main covariate that we will use contains the age of each participant
+print(group_covs['age'])
 
-# Our first vector picks out the six runs of each of the 16 participants
-print(group_info['subjs'])
+plt.figure(figsize=(7, 7))
+plt.hist(group_covs['age'])
+plt.xlabel('Age')
+plt.ylabel('Frequency')
 
-
-# And the second vector picks out runs 1 to 6 from all participants
-print(group_info['runs'])
 
 #%%
-# We'll use this information to create our design. First, we need to specify a config that outlines how the design matrix will be constructed.
+# We'll use this information to create our group level design. First, we need to specify a config that outlines how the design matrix will be constructed.
 # 
-# We'll add a categorical regressor for each participant that models the mean across that participants six runs. A single contrast will combine across all 16 of these regressors to compute a group average. A final zero-mean parametric regressor will describe any effects that change linearly across the six recordings.
+# We'll add a single intercept term into the model and a parametric regressor containing the participants ages.
 
 
 from glmtools.design import DesignConfig
 
 DC = DesignConfig()
+DC.add_regressor(name='Intercept', rtype='Constant')
+DC.add_regressor(name='Age', rtype='Parametric', datainfo='age', preproc='z')
+DC.add_simple_contrasts()
 
-group_avg_contrast = {}
-for ii in range(16):
-    DC.add_regressor(name='Subj_{}'.format(ii), rtype='Categorical', datainfo='subjs', codes=ii)
-    group_avg_contrast['Subj_{}'.format(ii)] = 1/16
-DC.add_regressor(name='Run', rtype='Parametric', datainfo='runs', preproc='z')
-
-
-DC.add_contrast(name='GroupAvg', values=group_avg_contrast)
-DC.add_contrast(name='Run', values={'Run': 1})
 
 #%%
 # Now we can fit our model! 
@@ -388,8 +398,11 @@ DC.add_contrast(name='Run', values={'Run': 1})
 # We'll also pass in the design config and the group info, these variables will be combined to make the group design. Finally, the model is fitted and the result returned in an object.
 
 
-
-glmsp = osl_ephys.glm.group_glm_spectrum(first_levels.get(), design_config=DC, datainfo=group_info)
+gglmsp = osl_ephys.glm.group_glm_spectrum_from_array(fl_data, 
+                                                     design_config=DC,
+                                                     datainfo=group_covs,
+                                                     spectrum_config=glmspec2.config, 
+                                                     info=ginfo)
 
 #%%
 # Let's explore that in more detail. First, we'll visualise the group design matrix (making some tweaks to the plotting as this is a big design matrix...)
@@ -398,7 +411,7 @@ glmsp = osl_ephys.glm.group_glm_spectrum(first_levels.get(), design_config=DC, d
 
 figargs = {'figsize': (18, 9)}
 with plt.rc_context({'font.size': 10}):
-    fig = glmsp.design.plot_summary(figargs=figargs)
+    fig = gglmsp.design.plot_summary(figargs=figargs)
 
 #%%
 # The design matrix has 96 rows as expected, one for each dataset.
@@ -409,17 +422,17 @@ with plt.rc_context({'font.size': 10}):
 
 
 
-print(glmsp.data.data.shape)
+print(gglmsp.data.data.shape)
 
 #%%
-# This is our 4-dimensional group data. We have 96 datasets, 4 first-level contrasts, 204 channels and 101 frequencies in this dataset. 
+# This is our 4-dimensional group data. We have 557 datasets, 5 first-level contrasts, 102 channels and 189 frequencies in this dataset. 
 # 
-# We can do a quick check to see if any of the 96 datasets are an obvious outlier. The ``plot_outliers`` function computes the variability across the final three dimensions to visualise a vector with one number per dataset. We can see that the variability within each of the 96 datasets is pretty comparable across the group.
+# We can do a quick check to see if any of the 557 datasets are an obvious outlier. The ``plot_outliers`` function computes the variability across the final three dimensions to visualise a vector with one number per dataset. We can see that the variability within each of the 557 datasets is pretty comparable across the group. There would be much more variability if we hadn't chosed the ``standardise_data`` option during the first level analysis.
 
 
 
 
-fig = glmsp.data.plot_outliers()
+fig = gglmsp.data.plot_outliers()
 
 
 # So, we've seen the ingredients. Let's take a look at the group model.
@@ -428,7 +441,7 @@ fig = glmsp.data.plot_outliers()
 
 
 
-print(glmsp.model.copes.shape)
+print(gglmsp.model.copes.shape)
 
 
 # The group GLM-Spectra themselves can be visualised using similar figures the first levels. Here we use ``plot_joint_spectrum``` to visualise the group average (group contrast 0) of each of the first level contrasts in turn.
@@ -437,15 +450,15 @@ print(glmsp.model.copes.shape)
 plt.figure(figsize=(12,12))
 plt.subplots_adjust(wspace=0.3, hspace=0.4)
 
-for ii in range(4):
-    ax = plt.subplot(2, 2, ii+1)
+for ii in range(5):
+    ax = plt.subplot(2, 3, ii+1)
     ylabel = 'Magnitude' if ii == 0 else ''
-    glmsp.plot_joint_spectrum(gcontrast=0, fcontrast=ii, freqs=[3, 10, 15], ax=ax, base=0.5, ylabel=ylabel)
+    gglmsp.plot_joint_spectrum(gcontrast=0, fcontrast=ii, freqs=[3, 10, 15], ax=ax, base=0.5, ylabel=ylabel)
 
 #%%
 # There is lots of structure in these group averages. We can see
 # 
-# - The overall average has a familiar 1/f-type slope interrupted by a prominant alpha peak around 9Hz, and a prominant beta peak around 15Hz. The beta peak is very strong as we're analysing a task dataset which includes a motor response. We would likly only see the alpha peak in a normal resting state dataset
+# - The overall average has a familiar 1/f-type slope interrupted by a prominant alpha peak around 9Hz, and a prominant beta peak around 15-30Hz. 
 # 
 # - The linear trend response has a broad peak between 5 and 9Hz covering bilateral temporal sensors. This indicates that the low alpha/theta power in these sensors increased over time within each recording.
 # 
@@ -459,16 +472,15 @@ for ii in range(4):
 
 
 
-
-plt.figure(figsize=(12,12))
+plt.figure(figsize=(16, 9))
 plt.subplots_adjust(wspace=0.3, hspace=0.4)
 
-for ii in range(4):
-    ax = plt.subplot(2, 2, ii+1)
-    glmsp.plot_joint_spectrum(gcontrast=0, fcontrast=ii, 
-                              freqs=[3, 10, 15], ax=ax, 
-                              base=0.5, ylabel='t-stat',
-                              metric='tstats')
+for ii in range(5):
+    ax = plt.subplot(2, 3, ii+1)
+    gglmsp.plot_joint_spectrum(gcontrast=0, fcontrast=ii, 
+                               freqs=[3, 10, 15], ax=ax, 
+                               base=0.5, ylabel='t-stat',
+                               metric='tstats')
 
 #%%
 # Again lots of structure, but now we can make a stronger interpretation of the units on the y-axis. These are t-statistics which show the magnitude of an effect as a ratio with its stanard error. t-stats close to zero indicate that any effect is insubstantial compared to its variance.
@@ -480,12 +492,12 @@ for ii in range(4):
 
 
 
-plt.figure(figsize=(12,12))
+plt.figure(figsize=(16, 9))
 plt.subplots_adjust(wspace=0.3, hspace=0.4)
 
-for ii in range(4):
-    ax = plt.subplot(2, 2, ii+1)
-    glmsp.plot_joint_spectrum(gcontrast=1, fcontrast=ii, 
+for ii in range(5):
+    ax = plt.subplot(2, 4, ii+1)
+    gglmsp.plot_joint_spectrum(gcontrast=1, fcontrast=ii, 
                               freqs=[3, 10, 15], ax=ax, 
                               base=0.5, ylabel='t-stat',
                               metric='tstats')
@@ -504,12 +516,11 @@ for ii in range(4):
 # Here, we show an example permuted design matrix for a single 'null' model.
 
 
+perm_design = glm.permutations.permute_design_matrix(gglmsp.design, [1], 'row-shuffle')
 
-
-perm_design = glm.permutations.permute_design_matrix(glmsp.design, np.arange(16), 'sign-flip')
-figargs = {'figsize': (18, 9)}
-with plt.rc_context({'font.size': 10}):
-    fig = perm_design.plot_summary(figargs=figargs)
+# Remember that the ages have been z-transformed!
+print('Original Ages : {}'.format(gglmsp.design.design_matrix[:10, 1]))
+print('Permutated Ages : {}'.format(perm_design.design_matrix[:10, 1]))
 
 #%%
 # Notice that half our mean regressor values have been flipped. Try running the previous cell multiple times to see how the permutations change.
@@ -518,38 +529,93 @@ with plt.rc_context({'font.size': 10}):
 # 
 # - Permute the design matrix
 # - Re-fit the group model
-# - Identify clusters across sensors and frequency
-# - Take the largest cluster statistic and add it to the null distribution
+# - Take the largest t-value statistic (ignoring the sign of the t-values)  and add it to the null distribution
 # 
 # Then, we assess significance by
 # 
 # - Computing the observed statistics
-# - Finding clusters in the result
-# - Comparing the observed cluster statisticis to the null distribution
-# - Keeping clusters which fall beyond the 95th percentile of the null.
+# - Compare the observed t-values to the percentiles of the null distribution (again, ignoring their sign)
 # 
-# Let's run the permutations for our group average of the first level EOG effect
+# Let's run the permutations for the age effect:
 
+group_contrast = 1  # Age
+firstlevel_contrast = 0  # Mean spectrum
 
+P = osl_ephys.glm.MaxStatPermuteGLMSpectrum(gglmsp, group_contrast, firstlevel_contrast, nperms=50, nprocesses=1)
 
-
-P = osl_ephys.glm.ClusterPermuteGLMSpectrum(glmsp, 0, 2, nperms=50, cluster_forming_threshold=9)
-
-
-# Once the permutations are complete - we can visualise the significant clusters.
-plt.figure(figsize=(9, 9))
-ax = plt.subplot(111)
-P.plot_sig_clusters([99], base=0.5, ax=ax)
 
 #%%
-# We find a single significant cluster at low frequencies around the frontal sensors.
+# Depending on your computer and how quickly 50 permutation runs, you can increase the number of permutation and/or the number of CPU processes to compute in parallel. Generally we'd want 1000+ permutations for a published result and several hundred for a reasonable analysis. The 50 we do here are ok for a quick teaching demonstration.
 #
+# Once the permutations are complete - we can visualise the null distribution
+
+plt.figure(figsize=(7, 7))
+plt.hist(P.perms.nulls, 32)
+plt.xlabel('Maximum t-statistic')
+plt.ylabel('Frequency')
+
+#%%
+# Most of the maximum statistics are between 3 and 5 but there is one massive one! this is our observed maximum statisics from the unpermuted design matrix. The original data is always included in the null distribution during non-parametric permutations.
+#
+# We can compute the threshold for significance from the percentiles of this distribution. Let's use a standard alpha value of 5% and compute the critical value.
+
+critical_value = P.perms.get_thresh(100 - 5)
+print(critical_value)
+
+#%%
+# The 95th percentile of the null distribution is around 4.6 (your precise value might vary..). Any observed t-values larger than this can be considered statistically significant in our test. We can apply this threshold to both tails of the data distribution eg a value of +5 and a value of -5 would be considered significant.
+#
+# Next, we can overlay the whole distribution of observed t-values next to the null distribution to see how they line up. Notice again that we're plotting the absolute value of the t-statistics here which will combine the positive and negative t-values. We treat these the same to compute the equivalent of a two-tailed test.
+
+plt.figure(figsize=(10, 7))
+plt.hist(np.abs(gglmsp.model.tstats[1, 0, :, :].reshape(-1)), 48, density=True, alpha=0.5)
+plt.hist(P.perms.nulls, 48, density=True, alpha=0.5)
+plt.legend(['Abs t-statistics', 'Permutation Maximum statistics'], frameon=False )
+plt.xlabel('Maximum t-statistic')
+plt.ylabel('Frequency')
+
+#%%
+# Most of the observed values lie well below the null distribution of maximum statisics but there are a good proportion look like they're above the critical value. We have some significant effects!
+
+# Once the permutations are complete - we can visualise the t-value spectrum alongside the critical thresholds for significance.
+plt.figure(figsize=(9, 9))
+ax = plt.subplot(111)
+
+osl_ephys.glm.plot_sensor_spectrum(gglmsp.f, gglmsp.model.tstats[1, 0, :, :].T,
+                                   gglmsp.info, base=0.5, ax=ax)
+
+xl = ax.get_xlim()
+
+critical_value = P.perms.get_thresh(100 - 5)
+ax.hlines(critical_value, xl[0], xl[1], 'k')
+ax.hlines(-critical_value, xl[0], xl[1], 'k')
+
+critical_value = P.perms.get_thresh(100 - 1)
+ax.hlines(critical_value, xl[0], xl[1], 'r')
+ax.hlines(-critical_value, xl[0], xl[1], 'r')
+
+
+#%%
+# Several regions show a significant effect, including low frequencies, low, alpha, high alpha and beta ranges.#
+#
+
+#%%
+# Challenge
+#
+# Which parts of the spectrum show a statistically significant group average for the first level effect of the VEOG channel?
+# 
+
+
+
+#%%
 # Further Reading
 # ***************
 #
-#   Wakeman, D. G., & Henson, R. N. (2015). A multi-subject, multi-modal human neuroimaging dataset. In Scientific Data (Vol. 2, Issue 1). Springer Science and Business Media LLC. https://doi.org/10.1038/sdata.2015.1 
-# 
-#   Quinn, A. J., Atkinson, L., Gohil, C., Kohl, O., Pitt, J., Zich, C., Nobre, A. C., & Woolrich, M. W. (2022). The GLM-Spectrum: A multilevel framework for spectrum analysis with covariate and confound modelling. Cold Spring Harbor Laboratory. https://doi.org/10.1101/2022.11.14.516449 
+# Taylor, J.R., Williams, N., Cusack, R., Auer, T., Shafto, M.A., Dixon, M., Tyler, L.K., Cam-CAN, Henson, R.N. (2017). The Cambridge Centre for Ageing and Neuroscience (Cam-CAN) data repository: Structural and functional MRI, MEG, and cognitive data from a cross-sectional adult lifespan sample. NeuroImage. 144, 262-269. doi: https://doi.org/10.1016/j.neuroimage.2015.09.018.
+#
+# Shafto, M.A., Tyler, L.K., Dixon, M., Taylor, J.R., Rowe, J.B., Cusack, R., Calder, A.J., Marslen-Wilson, W.D., Duncan, J., Dalgleish, T., Henson, R.N., Brayne, C., Cam-CAN, & Matthews, F.E. (2014). The Cambridge Centre for Ageing and Neuroscience (Cam-CAN) study protocol: a cross-sectional, lifespan, multidisciplinary examination of healthy cognitive ageing. BMC Neurology, 14(204). doi:https://doi.org/10.1186/s12883-014-0204-1  
+#
+# Andrew J. Quinn, Lauren Z. Atkinson, Chetan Gohil, Oliver Kohl, Jemma Pitt, Catharina Zich, Anna C. Nobre, Mark W. Woolrich; The GLM-spectrum: A multilevel framework for spectrum analysis with covariate and confound modelling. Imaging Neuroscience 2024; 2 1–26. doi: https://doi.org/10.1162/imag_a_00082
 
 
 
