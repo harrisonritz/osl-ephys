@@ -5,6 +5,7 @@
 # Authors: Mark Woolrich <mark.woolrich@ohba.ox.ac.uk>
 #          Chetan Gohil <chetan.gohil@psych.ox.ac.uk>
 #          Rob Seymour <rob.seymour@psych.ox.ac.uk>
+#          Mats van Es <mats.vanes@psych.ox.ac.uk>
 
 import os
 import os.path as op
@@ -111,6 +112,7 @@ def get_rhino_filenames(subjects_dir, subject):
         "polhemus_rpa_file": op.join(coreg_dir, "polhemus_rpa.txt"),
         "polhemus_lpa_file": op.join(coreg_dir, "polhemus_lpa.txt"),
         "polhemus_headshape_file": op.join(coreg_dir, "polhemus_headshape.txt"),
+        "coreg_error_file": op.join(coreg_dir, "coreg_err.txt"),
         # BET mesh output in native space
         "bet_outskin_mesh_vtk_file": op.join(coreg_dir, "scaled_outskin_mesh.vtk"),
         "bet_inskull_mesh_vtk_file": op.join(coreg_dir, "scaled_inskull_mesh.vtk"),
@@ -635,7 +637,7 @@ def rhino_icp(smri_headshape_polhemus, polhemus_headshape_polhemus, n_init=10):
     # These are the "source" points that will be moved around
     data2 = polhemus_headshape_polhemus
 
-    err_old = np.Infinity
+    err_old = np.inf
     err = np.zeros(n_init)
 
     Mr = np.eye(4)
@@ -711,7 +713,7 @@ def get_vtk_mesh_native(vtk_mesh_file, nii_mesh_file):
     nii_mesh_file needs to be the corresponding niftii file from bet that corresponds to the same mesh as in vtk_mesh_file
     """
 
-    data = pd.read_csv(vtk_mesh_file, delim_whitespace=True)
+    data = pd.read_csv(vtk_mesh_file, sep=r"\s+")
 
     num_rrs = int(data.iloc[3, 1])
 
@@ -783,7 +785,7 @@ def transform_vtk_mesh(vtk_mesh_file_in, nii_mesh_file_in, out_vtk_file, nii_mes
     # transform them using the passed in xform
     rrs_out = xform_points(overall_xform, rrs_in.T).T
 
-    data = pd.read_csv(vtk_mesh_file_in, delim_whitespace=True)
+    data = pd.read_csv(vtk_mesh_file_in, sep=r"\s+")
 
     num_rrs = int(data.iloc[3, 1])
     data.iloc[4 : num_rrs + 4, 0:3] = rrs_out
@@ -981,7 +983,7 @@ def save_or_show_renderer(renderer, filename):
         if ext == ".html":
             logging.getLogger("param.Row").setLevel(logging.ERROR)  # suppress warnings
             logging.getLogger("param.VTKRenderWindowSynchronized").setLevel(logging.ERROR)
-            renderer.figure.plotter.export_html(filename, backend="panel")
+            renderer.figure.plotter.export_html(filename)
         elif ext in allowed_extensions:
             renderer.figure.plotter.save_graphic(filename)
 

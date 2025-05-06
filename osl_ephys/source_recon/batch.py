@@ -3,25 +3,29 @@
 """
 
 # Authors: Chetan Gohil <chetan.gohil@psych.ox.ac.uk>
+#          Mats van Es <mats.vanes@psych.ox.ac.uk>           
 
 import os
 import sys
 import traceback
 import pprint
 import inspect
+
 from copy import deepcopy
 from time import localtime, strftime
 from functools import partial
+from dask.distributed import Variable, Queue
 
 import numpy as np
 import yaml
 import mne
 
-from . import rhino, wrappers
+from . import rhino, wrappers, freesurfer_utils
 from ..report import src_report
 from ..utils import logger as osl_logger
 from ..utils import validate_outdir, find_run_id, parallel
 from ..utils.misc import set_random_seed
+from ..utils.parallel import execute_main_thread_tasks
 
 import logging
 logger = logging.getLogger(__name__)
@@ -96,6 +100,7 @@ def run_src_chain(
     preproc_file=None,
     smri_file=None,
     epoch_file=None,
+    surface_extraction_method='fsl',
     logsdir=None,
     reportdir=None,
     gen_report=True,
@@ -114,6 +119,8 @@ def run_src_chain(
         Source reconstruction directory.
     subject : str
         Subject name.
+    surface_extraction_method : str
+        Can be 'fsl' or 'freesurfer'.
     preproc_file : str
         Preprocessed fif file.
     smri_file : str
@@ -141,13 +148,27 @@ def run_src_chain(
     flag : bool
         Flag indicating whether source reconstruction was successful.
     """
-    rhino.fsl_utils.check_fsl()
+    if surface_extraction_method == 'fsl':
+        rhino.fsl_utils.check_fsl()
+    elif surface_extraction_method == 'freesurfer':
+        freesurfer_utils.check_freesurfer()
 
     # Directories
     outdir = validate_outdir(outdir)
     logsdir = validate_outdir(logsdir or outdir / "logs")
     reportdir = validate_outdir(reportdir or outdir / "src_report")
 
+    # initialise the report data.pkl here, containing 'filename'. If we don't do this,
+    # gen_html_page might fail because not all data.pkl files in the report directory
+    # will have the filename yet.
+    if reportdir is not None: 
+        src_report.add_to_data(
+            f"{reportdir}/{subject}/data.pkl",
+            {
+                "filename": subject,
+            },
+        )
+    
     # Use the subject ID for the run ID
     run_id = subject
 
@@ -214,8 +235,10 @@ def run_src_chain(
                         + f"or use available functions: {avail_names}."
                     )
             def wrapped_func(**kwargs):
-                args, _, _, defaults = inspect.getargspec(func)
-                args_with_defaults = args[-len(defaults):] if defaults is not None else []
+                sig = inspect.signature(func)
+                args = [param for param in sig.parameters.keys() if param != 'kwargs']
+                defaults = [param.default for param in sig.parameters.values() if param.default is not inspect.Parameter.empty]
+                args_with_defaults = args[-len(defaults):] if defaults else []
                 kwargs_to_pass = {}
                 for a in args:
                     if a in kwargs:
@@ -226,6 +249,7 @@ def run_src_chain(
             wrapped_func(
                 outdir=outdir,
                 subject=subject,
+                surface_extraction_method=surface_extraction_method,
                 preproc_file=preproc_file,
                 smri_file=smri_file,
                 epoch_file=epoch_file,
@@ -274,6 +298,7 @@ def run_src_batch(
     preproc_files=None,
     smri_files=None,
     epoch_files=None,
+    surface_extraction_method='fsl',
     logsdir=None,
     reportdir=None,
     gen_report=True,
@@ -293,6 +318,8 @@ def run_src_batch(
         Source reconstruction directory.
     subjects : list of str
         Subject names.
+    surface_extraction_method : str
+        Can be 'fsl' or 'freesurfer'.
     preproc_files : list of str
         Preprocessed fif files.
     smri_files : list of str or str
@@ -323,7 +350,10 @@ def run_src_batch(
     flags : list of bool
         Flags indicating whether coregistration was successful.
     """
-    rhino.fsl_utils.check_fsl()
+    if surface_extraction_method == 'fsl':
+        rhino.fsl_utils.check_fsl()
+    elif surface_extraction_method == 'freesurfer':
+        freesurfer_utils.check_freesurfer()
 
     # Directories
     outdir = validate_outdir(outdir)
@@ -413,6 +443,7 @@ def run_src_batch(
     # Create partial function with fixed options
     pool_func = partial(
         run_src_chain,
+        surface_extraction_method=surface_extraction_method,
         logsdir=logsdir,
         reportdir=reportdir,
         gen_report=gen_report,
@@ -430,6 +461,8 @@ def run_src_batch(
     # Actually run the processes
     if dask_client:
         flags = parallel.dask_parallel_bag(pool_func, args)
+        # Wait for all tasks to finish, and then execute any main thread tasks
+        execute_main_thread_tasks()
     else:
         flags = [pool_func(*aa) for aa in args]
 
