@@ -12,6 +12,8 @@ import os
 import pickle
 from pathlib import Path
 
+import matplotlib
+matplotlib.use('Agg') 
 import mne
 from mne.coreg import Coregistration
 from mne.io import read_info
@@ -26,6 +28,7 @@ from . import (
     freesurfer_utils,
 )
 from ..report import src_report
+from ..report.preproc_report import plot_freqbands
 from ..utils.logger import log_or_print
 
 
@@ -284,12 +287,62 @@ def compute_surfaces(
         )
 
 
+def make_watershed_bem(
+    outdir, 
+    subject, 
+    overwrite=False,
+    reportdir=None):
+    """Wrapper for making the watershed BEM.
+    
+    Parameters
+    ----------
+    outdir : str
+        Path to where to output the source reconstruction files.
+    subject : str
+        Subject name/id.
+    reportdir : str, optional
+        Path to report directory.
+    """
+    log_or_print("*** RUNNING MNE (FREESURFER) MAKE WATERSHED BEM***")
+    # Make watershed BEM
+    # freesurfer_utils.make_watershed_bem(
+    #     outdir=outdir,
+    #     subject=subject,
+    #     overwrite=overwrite,
+    # )
+    surfaces = ['axial', 'coronal', 'sagittal']
+    surf_dir = freesurfer_utils.get_freesurfer_filenames(subjects_dir=outdir, subject=subject)['surf']['basedir'].__str__()
+    output_files = [f"{surf_dir.replace(outdir.__str__() + '/', '')}/{surface}.png" for surface in surfaces]
+
+    for surf, file in zip(surfaces, output_files):
+        plot_bem_kwargs = dict(
+        subject=subject,
+        subjects_dir=outdir,
+        brain_surfaces="orig",
+        orientation=surf,
+        slices=range(60,201,20),
+        )
+        fig = mne.viz.plot_bem(**plot_bem_kwargs)
+        fig.savefig(os.path.join(outdir, file))
+    
+    # Save info for the report
+    if reportdir is not None:
+        # Save info for the report
+        src_report.add_to_data(
+            f"{reportdir}/{subject}/data.pkl",
+            {
+                "compute_surfaces": True,
+                "surface_plots": output_files,
+            },
+        )
+    
+
 def coregister(
     outdir,
     subject,
-    mode="rhino",
     preproc_file=None,
     epoch_file=None,
+    surface_extraction_method='fsl',
     use_nose=True,
     use_headshape=True,
     already_coregistered=False,
@@ -306,15 +359,12 @@ def coregister(
         Path to where to output the source reconstruction files.
     subject : str
         Subject name/id.
-    smri_file : str
-        Path to the T1 weighted structural MRI file to use in source
-        reconstruction.
-    mode : str, optional
-        Mode to use for coregistration. Can be 'rhino' or 'mne'.
     preproc_file : str, optional
         Path to the preprocessed fif file.
     epoch_file : str, optional
         Path to the preprocessed epochs fif file.
+    surface_extraction_method : str, optional
+        Method used to extract the surfaces. Can be 'fsl' or 'freesurfer'.
     use_nose : bool, optional
         Should we use the nose in the coregistration?
     use_headshape : bool, optional
@@ -329,10 +379,10 @@ def coregister(
         of the sMRI-derived fids. E.g. this might be the case if we
         do not trust the size (e.g. in mm) of the sMRI, or if we are
         using a template sMRI that has not come from this subject.
-        if in mode='mne', this can be 'uniform' or '3-axis'.
+        if in surface_extraction_method='freesurfer', this can be 'uniform' or '3-axis'.
     n_init : int, optional
         Number of initialisations for coregistration. Different defaults 
-        for mode='rhino' and mode='mne'
+        for surface_extraction_method='fsl' and surface_extraction_method='freesurfer'
     reportdir : str, optional
         Path to report directory.
     """
@@ -340,7 +390,7 @@ def coregister(
         preproc_file = epoch_file
 
     # Run coregistration
-    if mode == "rhino":
+    if surface_extraction_method == "fsl":
         if n_init is None:
             n_init = 1
         
@@ -357,13 +407,15 @@ def coregister(
 
         # Calculate metrics
         if already_coregistered:
-            fid_err = [np.nan, np.nan, np.nan]
+            fid_err = None
         else:
             fid_err = rhino.coreg_metrics(subjects_dir=outdir, subject=subject)
 
         # Save plots
         coreg_dir = rhino.get_coreg_filenames(outdir, subject)["basedir"]
-        rhino.coreg_display(
+        # The coreg display may have to be delayed until after Dask processing because of rendering
+        # issues on dask workers
+        rhino.coreg_display( 
             subjects_dir=outdir,
             subject=subject,
             display_outskin_with_nose=False,
@@ -371,7 +423,7 @@ def coregister(
         )
         coreg_filename = f"{coreg_dir}/coreg.html".replace(f"{outdir}/", "")
             
-    elif mode == "mne" or mode == 'freesurfer':
+    elif surface_extraction_method == 'freesurfer':
         coreg_files = freesurfer_utils.get_coreg_filenames(outdir, subject)
         coreg_filename = coreg_files['coreg_html']
         
@@ -426,7 +478,7 @@ def coregister(
         lpa_distance = np.sqrt(np.sum((coreg._dig_dict["lpa"] - coreg.fiducials.dig[0]["r"]) ** 2))
         nasion_distance = np.sqrt(np.sum((coreg._dig_dict["nasion"] - coreg.fiducials.dig[1]["r"]) ** 2))
         rpa_distance = np.sqrt(np.sum((coreg._dig_dict["rpa"] - coreg.fiducials.dig[2]["r"]) ** 2))
-        fid_err = np.array([nasion_distance, lpa_distance, rpa_distance, np.median(dists)]) * 1e2 # now in cm
+        fid_err = np.array([nasion_distance, lpa_distance, rpa_distance, np.sqrt(np.mean(dists**2))]) * 1e2 # now in cm
             
             
     if reportdir is not None:
@@ -435,7 +487,7 @@ def coregister(
             f"{reportdir}/{subject}/data.pkl",
             {
                 "coregister": True,
-                "mode": mode,
+                "surface_extraction_method": surface_extraction_method,
                 "use_headshape": use_headshape,
                 "use_nose": use_nose,
                 "already_coregistered": already_coregistered,
@@ -446,7 +498,7 @@ def coregister(
             },
         )
         
-        if mode == "mne" or mode == "freesurfer":
+        if surface_extraction_method == "freesurfer":
             src_report.add_to_data(
                 f"{reportdir}/{subject}/data.pkl",
                 {
@@ -459,9 +511,11 @@ def coregister(
 def forward_model(
     outdir,
     subject,
+    smri_file=None,
+    surface_extraction_method='fsl',
     gridstep=8,
     model="Single Layer",
-    mode="volumetric",
+    source_space="volumetric",
     eeg=False,
     reportdir=None,
     **kwargs,
@@ -474,6 +528,12 @@ def forward_model(
         Path to where to output the source reconstruction files.
     subject : str
         Subject name/id.
+    smri_file : str, optional
+        Path to the T1 weighted structural MRI file to use in source
+        reconstruction. Only required if using freesurfer and a volumentric source
+        space.    
+    surface_extraction_method : str, optional
+        Method used to extract the surfaces. Can be 'fsl' or 'freesurfer'.
     gridstep : int, optional
         A grid will be constructed with the spacing given by ``gridstep``
         in mm, generating a volume source space.
@@ -482,16 +542,24 @@ def forward_model(
         where:
         'Single Layer' use a single layer (brain/cortex)
         'Triple Layer' uses three layers (scalp, inner skull, brain/cortex)
-    mode : str, optional
-        Are we using FSL-based volumetric, or FreeSurfer based surface? 
+    source_space : str, optional
+        Are we using volumetric, or surface based forward model? 
         Can be 'volumetric' (or 'vol') or 'surface' (or 'surf').
+        Currently, `surface_extraction_method='fsl' is only supported
+        for volumetric forward models.
     eeg : bool, optional
         Are we using EEG channels in the source reconstruction?
     reportdir : str, optional
         Path to report directory.
     """
     # Compute forward model
-    if mode == 'volumetric' or mode == 'vol':
+    if surface_extraction_method == 'fsl':
+        if source_space in ['surf', 'surface']:
+            raise ValueError(
+                "Surface based forward models are currently not supported with "
+                "surface_extraction_method='fsl'."
+            )
+        
         rhino.forward_model(
             subjects_dir=outdir,
             subject=subject,
@@ -500,17 +568,26 @@ def forward_model(
             eeg=eeg,
         )
 
-    elif mode == 'surface' or mode == 'surf':
+    elif surface_extraction_method == 'freesurfer': 
         log_or_print("*** RUNNING MNE FORWARD MODEL ***")
         filenames = freesurfer_utils.get_coreg_filenames(outdir, subject)
         fwd_fname = freesurfer_utils.get_freesurfer_filenames(outdir, subject)['fwd_model']
         
-        src = mne.setup_source_space(
-        subjects_dir=outdir,
-        spacing=gridstep,
-        subject=subject,
-        add_dist="patch",
-        )
+        if source_space in ['volumetric', 'vol']:
+            src = mne.setup_volume_source_space(
+            subjects_dir=outdir,
+            pos=gridstep,
+            subject=subject,
+            mri=smri_file,
+            )
+        elif source_space in ['surf', 'surface']:
+            src = mne.setup_source_space(
+            subjects_dir=outdir,
+            spacing=gridstep,
+            subject=subject,
+            add_dist="patch",
+            )
+            
         mne.write_source_spaces(filenames['source_space'], src, overwrite=True)
         
         conductivity = kwargs.pop("conductivity", None)
@@ -551,14 +628,14 @@ def forward_model(
             f"{reportdir}/{subject}/data.pkl",
             {
                 "forward_model": True,
-                "mode": mode,
+                "surface_extraction_method": surface_extraction_method,
                 "model": model,
                 "gridstep": gridstep,
                 "eeg": eeg,
             },
         )
         
-        if mode == 'surface' or mode == 'surf':
+        if surface_extraction_method == 'freesurfer':
             src_report.add_to_data(
             f"{reportdir}/{subject}/data.pkl",
             {
@@ -686,7 +763,7 @@ def minimum_norm(
     epoch_file,
     chantypes,
     rank,
-    mode="rhino",
+    surface_extraction_method="fsl",
     depth=0.8,
     loose="auto",
     lambda2=1.0/9,
@@ -711,8 +788,8 @@ def minimum_norm(
         List of channel types to include.
     rank : int
         Rank of the noise covariance matrix.
-    mode : str, optional
-        Which mode was coregistration performed? 'rhino' (default) or 'mne'/'freesurfer'.
+    surface_extraction_method : str
+        Method used to extract the surfaces. Can be 'fsl' or 'freesurfer'.
     depth : float, optional
         Depth weighting.
     loose : float, optional
@@ -732,10 +809,6 @@ def minimum_norm(
 
     if isinstance(chantypes, str):
         chantypes = [chantypes]
-
-    allowed_modes = ["rhino", "mne", "freesurfer"]
-    if mode not in allowed_modes:
-        raise ValueError(f"mode must be one of {allowed_modes}")
     
     if epoch_file is not None:
         data = mne.read_epochs(epoch_file, preload=True)
@@ -753,10 +826,10 @@ def minimum_norm(
         )
 
     # Create inverse operator
-    if mode in ["mne", "freesurfer"]:
+    if surface_extraction_method == "freesurfer":
         fs_files = freesurfer_utils.get_freesurfer_filenames(outdir, subject)
         fwd_fname = fs_files["fwd_model"]
-    else:
+    elif surface_extraction_method == 'fsl':
         rhino_files = rhino.utils.get_rhino_filenames(outdir, subject)
         fwd_fname = rhino_files["fwd_model"]
 
@@ -799,8 +872,9 @@ def parcellate(
     parcellation_file,
     method,
     orthogonalisation,
+    source_space,
+    surface_extraction_method='fsl',
     source_method='lcmv',
-    mode="rhino",
     spatial_resolution=None,
     reference_brain=None,
     voxel_trans="ztrans",
@@ -826,19 +900,21 @@ def parcellate(
         Method to use in the parcellation.
     orthogonalisation : bool
         Should we do orthogonalisation?
+    source_space : str
+        Source model to use. Can be 'volumetric' (/'vol') or 'surface' (/'surf').
+    surface_extraction_method : str
+        Method used to extract the surfaces. Can be 'fsl' or 'freesurfer'.
     source_method : str, optional
         Method used for source reconstruction. Can be 'lcmv' or one of the MNE methods
         ('mne', 'dspm', 'sloreta', 'eloreta').
-    mode : str, optional
-        Mode to use for coregistration. Can be 'rhino' or 'mne'.
     spatial_resolution : int, optional
         Resolution for beamforming to use for the reference brain in mm
         (must be an integer, or will be cast to nearest int). If None, then
         the gridstep used in coreg_filenames['forward_model_file'] is used.
     reference_brain : str, optional
-        Default depends on mode (rhino or mne) and source_method (lcmv or mne).
-        If mode='rhino', defaults to 'mni'. Alternatives: 'mri' or 'unscaled_mri'.
-        If mode='mne', defaults to 'fsaverage'. Alternatives: 'mri'.
+        Default depends on surface_extraction_method (fsl or freesurfer) and source_method (lcmv or mne).
+        If surface_extraction_method='fsl', defaults to 'mni'. Alternatives: 'mri' or 'unscaled_mri'.
+        If surface_extraction_method='freesurfer', defaults to 'fsaverage'. Alternatives: 'mri'.
     voxel_trans : str, optional
         Should we standardise ('ztrans') or de-mean ('demean') the voxel
         time courses? If None, no normalisation is applied.
@@ -868,6 +944,11 @@ def parcellate(
     available_source_methods = ["lcmv", "beamform", "mne", "dspm", "sloreta", "eloreta"]
     if source_method.lower() not in available_source_methods:
         raise ValueError(f"source_method must be one of {available_source_methods}")
+    elif source_method.lower() in ["lcmv", "beamform"] and source_space in ['surf', 'surface']:
+        raise ValueError(
+            "Surface based source models are not supported with "
+            "source_method='lcmv' or 'beamform'."
+        )
 
     # Get settings passed to the beamform/minimum_norm wrapper
     report_data = pickle.load(open(f"{reportdir}/{subject}/data.pkl", "rb"))
@@ -931,8 +1012,8 @@ def parcellate(
         pick_ori = report_data.pop("pick_ori")
         lambda2 = report_data.pop("lambda2")
 
-        # MNE surface parcellation
-        if mode == "mne":
+        # surface parcellation
+        if source_space in ["surf", "surface"]:
 
             if reference_brain is None:
                 reference_brain = 'fsaverage'
@@ -960,8 +1041,8 @@ def parcellate(
                 parcellation=parcellation_file,
             )
 
-        # MNE volume parcellation
-        else:
+        # volumetric parcellation
+        elif source_space in ["volumetric", "vol"]:
 
             if reference_brain is None:
                 reference_brain = "mni"
@@ -1029,10 +1110,17 @@ def parcellate(
             freq_range=freq_range,
             parcellation_file=parcellation_file,
             filename=f"{outdir}/{parc_psd_plot}",
+            freesurfer=surface_extraction_method=='freesurfer',
         )
     parc_corr_plot = f"{subject}/parc/corr.png"
     parcellation.plot_correlation(parcel_data, filename=f"{outdir}/{parc_corr_plot}")
 
+    if surface_extraction_method == 'fsl':
+        parc_freqbands_plot = f"{subject}/parc/freqbands.png"
+        plot_freqbands(parc_raw, f"{outdir}/{parc_freqbands_plot}")
+    else:
+        parc_freqbands_plot = None
+    
     # Save info for the report
     n_parcels = parcel_data.shape[0]
     n_samples = parcel_data.shape[1]
@@ -1054,6 +1142,7 @@ def parcellate(
             "n_epochs": n_epochs,
             "parc_psd_plot": parc_psd_plot,
             "parc_corr_plot": parc_corr_plot,
+            "parc_freqbands_plot": parc_freqbands_plot,
         },
     )
 
@@ -1237,9 +1326,13 @@ def beamform_and_parcellate(
         freq_range=freq_range,
         parcellation_file=parcellation_file,
         filename=f"{outdir}/{parc_psd_plot}",
+        freesurfer=False,
     )
     parc_corr_plot = f"{subject}/parc/corr.png"
     parcellation.plot_correlation(parcel_data, filename=f"{outdir}/{parc_corr_plot}")
+
+    parc_freqbands_plot = f"{subject}/parc/freqbands.png"
+    plot_freqbands(parc_raw, f"{outdir}/{parc_freqbands_plot}")
 
     if reportdir is not None:
         # Save info for the report
@@ -1271,6 +1364,7 @@ def beamform_and_parcellate(
                 "n_epochs": n_epochs,
                 "parc_psd_plot": parc_psd_plot,
                 "parc_corr_plot": parc_corr_plot,
+                "parc_freqbands_plot": parc_freqbands_plot,
             },
         )
 
@@ -1280,12 +1374,13 @@ def minimum_norm_and_parcellate(
     preproc_file,
     epoch_file,
     source_method,
+    source_space,
     chantypes,
     rank,
     method,
     parcellation_file,
     orthogonalisation,
-    mode="rhino",
+    surface_extraction_method="fsl",
     depth=0.8,
     loose="auto",
     lambda2=1.0/9,
@@ -1310,7 +1405,9 @@ def minimum_norm_and_parcellate(
     epoch_file : str
         Path to epoched preprocessed fif file.
     source_method : str
-        Method to used for inverse modelling (e.g., MNE, eLORETA).
+        Method to use for inverse modelling (e.g., MNE, eLORETA).
+    source_space : str
+        Source model to use (e.g., volumetric, surface).
     chantypes : list
         List of channel types to include.
     rank : int
@@ -1321,8 +1418,8 @@ def minimum_norm_and_parcellate(
         Path to the parcellation file to use.
     orthogonalisation : bool
         Should we do orthogonalisation?
-    mode : str, optional
-        Which mode was coregistration performed? 'rhino' (default) or 'mne'/'freesurfer'.
+    surface_extraction_method : str, optional
+        Method used for surface extraction. Can be 'freesurfer' or 'fsl'.
     depth : float, optional
         Depth weighting.
     loose : float, optional
@@ -1340,9 +1437,9 @@ def minimum_norm_and_parcellate(
         (must be an integer, or will be cast to nearest int). If None, then
         the gridstep used in coreg_filenames['forward_model_file'] is used.
     reference_brain : str, optional
-        Default depends on mode (rhino or mne) and source_method (lcmv or mne).
-        If mode='rhino', defaults to 'mni'. Alternatives: 'mri' or 'unscaled_mri'.
-        If mode='mne', defaults to 'fsaverage'. Alternatives: 'mri'.
+        Default depends on surface_extraction_method.
+        If surface_extraction_method='fsl', defaults to 'mni'. Alternatives: 'mri' or 'unscaled_mri'.
+        If surface_extraction_method='freesurfer', defaults to 'fsaverage'. Alternatives: 'mri'.
     voxel_trans : str, optional
         Should we standardise ('ztrans') or de-mean ('demean') the voxel
         time courses? If None, no normalisation is applied.
@@ -1377,10 +1474,10 @@ def minimum_norm_and_parcellate(
         )
 
     # Create inverse operator
-    if mode in ["mne", "freesurfer"]:
+    if surface_extraction_method == "freesurfer":
         fs_files = freesurfer_utils.get_freesurfer_filenames(outdir, subject)
         fwd_fname = fs_files["fwd_model"]
-    else:
+    elif surface_extraction_method == 'fsl':
         rhino_files = rhino.utils.get_rhino_filenames(outdir, subject)
         fwd_fname = rhino_files["fwd_model"]
 
@@ -1401,9 +1498,9 @@ def minimum_norm_and_parcellate(
     log_or_print(f"using source_method: {source_method}")
 
     # MNE surface parcellation
-    if mode == "mne":
+    if source_space in ["surf", "surface"]:
 
-        if reference_brain is None:
+        if reference_brain is None or reference_brain=='None':
             reference_brain = 'fsaverage'
         if reference_brain == 'mri':
             reference_brain = subject
@@ -1426,11 +1523,11 @@ def minimum_norm_and_parcellate(
             subject=reference_brain,
             stc=stc,
             method=method,
-            parcellation=parcellation_file,
+            parcellation_file=parcellation_file,
         )
 
-    # MNE volume parcellation
-    else:
+    # volumetric source model
+    elif source_space in ["vol", "volumetric"]:
 
         if reference_brain is None:
             reference_brain = "mni"
@@ -1447,7 +1544,7 @@ def minimum_norm_and_parcellate(
             transform=voxel_trans,
         )
 
-        mne_data_mni, _, coords_mni, _ = beamforming.transform_recon_timeseries(
+        mne_data_mni, _, coords_mni, _ = beamforming.transform_recon_timeseries( 
             subjects_dir=outdir,
             subject=subject,
             recon_timeseries=mne_data,
@@ -1477,7 +1574,7 @@ def minimum_norm_and_parcellate(
     os.makedirs(f"{outdir}/{subject}/parc", exist_ok=True)
     if epoch_file is None:
         # Save parcellated data as a MNE Raw object
-        parc_fif_file = f"{outdir}/{subject}/parc/{source_method}-parc-raw.fif"
+        parc_fif_file = f"{outdir}/{subject}/parc/{source_method.lower()}-parc-raw.fif"
         log_or_print(f"saving {parc_fif_file}")
         parc_raw = parcellation.convert2mne_raw(
             parcel_data, data, extra_chans=extra_chans
@@ -1485,7 +1582,7 @@ def minimum_norm_and_parcellate(
         parc_raw.save(parc_fif_file, overwrite=True)
     else:
         # Save parcellated data as a MNE Epochs object
-        parc_fif_file = f"{outdir}/{subject}/parc/{source_method}-parc-epo.fif"
+        parc_fif_file = f"{outdir}/{subject}/parc/{source_method.lower()}-parc-epo.fif"
         log_or_print(f"saving {parc_fif_file}")
         parc_epo = parcellation.convert2mne_epochs(parcel_data, data)
         parc_epo.save(parc_fif_file, overwrite=True)
@@ -1498,10 +1595,17 @@ def minimum_norm_and_parcellate(
         freq_range=freq_range,
         parcellation_file=parcellation_file,
         filename=f"{outdir}/{parc_psd_plot}",
+        freesurfer=surface_extraction_method=='freesurfer',
     )
     parc_corr_plot = f"{subject}/parc/corr.png"
     parcellation.plot_correlation(parcel_data, filename=f"{outdir}/{parc_corr_plot}")
 
+    if surface_extraction_method == 'fsl':
+        parc_freqbands_plot = f"{subject}/parc/freqbands.png"
+        plot_freqbands(parc_raw, f"{outdir}/{parc_freqbands_plot}")
+    else:
+        parc_freqbands_plot = None
+    
     if reportdir is not None:
         # Save info for the report
         n_parcels = parcel_data.shape[0]
@@ -1516,6 +1620,8 @@ def minimum_norm_and_parcellate(
                 "minimum_norm_and_parcellate": True,
                 "minimum_norm": True,
                 "parcellate": True,
+                "surface_extraction_method": surface_extraction_method,
+                "source_space": source_space,
                 "chantypes": chantypes,
                 "reference_brain": reference_brain,
                 "method": source_method,
@@ -1534,6 +1640,7 @@ def minimum_norm_and_parcellate(
                 "n_epochs": n_epochs,
                 "parc_psd_plot": parc_psd_plot,
                 "parc_corr_plot": parc_corr_plot,
+                "parc_freqbands_plot": parc_freqbands_plot,
             },
         )
 
@@ -1576,7 +1683,7 @@ def find_template_subject(
     template : str
         Template subject.
     """
-    print("Finding template subject:")
+    log_or_print("Finding template subject:")
 
     # Get the parcellated data files
     parc_files = []
@@ -1588,7 +1695,7 @@ def find_template_subject(
         if Path(parc_file).exists():
             parc_files.append(parc_file)
         else:
-            print(f"Warning: {parc_file} not found")
+            log_or_print(f"Warning: {parc_file} not found")
 
     # Validation
     n_parc_files = len(parc_files)
@@ -1604,7 +1711,7 @@ def find_template_subject(
     # Find a subject to use as a template
     template_index = sign_flipping.find_template_subject(covs, n_embeddings)
     template_subject = parc_files[template_index].split("/")[-3]
-    print("Template for sign flipping:", template_subject)
+    log_or_print("Template for sign flipping:", template_subject)
 
     return template_subject
 

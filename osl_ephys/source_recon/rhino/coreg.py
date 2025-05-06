@@ -4,6 +4,7 @@
 
 # Authors: Mark Woolrich <mark.woolrich@ohba.ox.ac.uk>
 #          Chetan Gohil <chetan.gohil@psych.ox.ac.uk>
+#          Mats van Es  <mats.vanes@psych.ox.ac.uk>
 
 import warnings
 import os.path as op
@@ -371,7 +372,8 @@ def coreg(
         np.savetxt(filenames["smri_nasion_file"], smri_nasion_polhemus)
         np.savetxt(filenames["smri_rpa_file"], smri_rpa_polhemus)
         np.savetxt(filenames["smri_lpa_file"], smri_lpa_polhemus)
-
+        np.savetxt(filenames["coreg_error_file"], err)
+        
     # ---------------------------------------------------------------------------------------------
     # Create sMRI-derived freesurfer meshes in native/mri space in mm, for use by forward modelling
 
@@ -405,6 +407,7 @@ def coreg_metrics(subjects_dir, subject):
     polhemus_nasion_file = coreg_filenames["polhemus_nasion_file"]
     polhemus_rpa_file = coreg_filenames["polhemus_rpa_file"]
     polhemus_lpa_file = coreg_filenames["polhemus_lpa_file"]
+    coreg_error_file = coreg_filenames["coreg_error_file"]
     info_fif_file = coreg_filenames["info_fif_file"]
 
     info = read_info(info_fif_file)
@@ -438,11 +441,16 @@ def coreg_metrics(subjects_dir, subject):
         smri_lpa_polhemus = np.loadtxt(smri_lpa_file)
         smri_lpa_meg = rhino_utils.xform_points(head_trans["trans"], smri_lpa_polhemus)
 
+    # load coreg error
+    if op.isfile(coreg_error_file):
+        coreg_error = np.loadtxt(coreg_error_file)
+        coreg_error = float(coreg_error)
+    
     # Distance between polhemus and sMRI fiducials in cm
     nasion_distance = np.sqrt(np.sum((polhemus_nasion_meg - smri_nasion_meg) ** 2))
     lpa_distance = np.sqrt(np.sum((polhemus_lpa_meg - smri_lpa_meg) ** 2))
     rpa_distance = np.sqrt(np.sum((polhemus_rpa_meg - smri_rpa_meg) ** 2))
-    distances = np.array([nasion_distance, lpa_distance, rpa_distance]) * 1e-1
+    distances = np.array([nasion_distance, lpa_distance, rpa_distance, coreg_error]) * 1e-1
 
     return distances
 
@@ -662,14 +670,12 @@ def coreg_display(
 
     # --------
     # Do plots
-
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
         if plot_type == "surf":
             # Initialize figure
             renderer = _get_renderer(None, bgcolor=(0.5, 0.5, 0.5), size=(500, 500))
-
             if display_headshape_pnts:
                 # Polhemus-derived headshape points
                 if polhemus_headshape_meg is not None and len(polhemus_headshape_meg.T) > 0:

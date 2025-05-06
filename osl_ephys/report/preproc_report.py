@@ -35,11 +35,12 @@ except ImportError:
 
 from ..utils import process_file_inputs, validate_outdir
 from ..utils.logger import log_or_print
+from ..source_recon.parcellation import plot_source_topo
 
 
 # ----------------------------------------------------------------------------------
 # Report generation
-
+mne.viz.set_browser_backend("matplotlib")
 
 def gen_report_from_fif(infiles, outdir, ftype=None, logsdir=None, run_id=None):
     """Generate web-report for a set of MNE data objects.
@@ -100,7 +101,7 @@ def get_header_id(raw):
         Scan name.
     
     """
-    return raw.filenames[0].split('/')[-1].strip('.fif')
+    return str(raw.filenames[0]).split('/')[-1].strip('.fif')
 
 
 def gen_html_data(
@@ -218,6 +219,7 @@ def gen_html_data(
     data['plt_channeldev'] = plot_channel_dists(raw, savebase, exclude_bads=False)
     data['plt_channeldev_exclude_bads'] = plot_channel_dists(raw, savebase, exclude_bads=True)
     data['plt_spectra'], data['plt_zoomspectra'] = plot_spectra(raw, savebase)
+    data['plt_freqbands'] = plot_freqbands(raw, savebase)
     data['plt_digitisation'] = plot_digitisation_2d(raw, savebase)
     data['plt_artefacts_eog'] = plot_eog_summary(raw, savebase)
     data['plt_artefacts_ecg'] = plot_ecg_summary(raw, savebase)
@@ -247,7 +249,7 @@ def gen_html_data(
     # we have to guess the exact filename
     g=[]
     for ext in ['tsss', 'trans', 'transdef', 'autobad', 'autobad_sss']:
-        g.append(glob(data['filename'].replace(f"{ext}.fif",'') +  '*.log'))
+        g.append(glob(str(data['filename']).replace(f"{ext}.fif",'') +  '*.log'))
     g = list(np.concatenate(g))
     
     for ig in g:
@@ -390,12 +392,12 @@ def gen_html_summary(reportdir, logsdir=None):
     
     # log files
     if logsdir is None:
-        logsdir = reportdir._str.replace('preproc_report', 'logs')
+        logsdir = reportdir.__str__().replace('preproc_report', 'logs')
     elif type(logsdir)==pathlib.PosixPath:
-        logsdir = logsdir._str
+        logsdir = logsdir.__str__()
         
-    if os.path.exists(os.path.join(logsdir, 'osl_batch.log')):
-        with open(os.path.join(logsdir, 'osl_batch.log'), 'r') as log_file:
+    if os.path.exists(os.path.join(logsdir, 'batch_preproc.log')):
+        with open(os.path.join(logsdir, 'batch_preproc.log'), 'r') as log_file:
             data['batchlog'] = log_file.read()
     
     g = glob(os.path.join(logsdir, '*.error.log'))    
@@ -429,8 +431,8 @@ def gen_html_summary(reportdir, logsdir=None):
 
 def gen_summary_data(subject_data):
     df = pd.DataFrame()
-    column_headers = ['Session ID', 'Measurement month', 'Duration (s)', 'Bad segments (mag)', 
-                      'Bad segments (grad)', 'Bad segments (eeg)', 'Bad channels (#)', 
+    column_headers = ['Session ID', 'Measurement month', 'Duration (s)', 'Bad segments (%) - mag', 
+                      'Bad segments (%) - grad)', 'Bad segments (%) - eeg)', 'Bad channels (#)', 
                       'Bad channels (id)', 'Bad ICA (total)', 'Bad ICA (ECG)', 'Bad ICA (EOG)']
     fields = ['fif_id', 'meas_date', 'acq_duration', 'bad_seg_pc_mag', 'bad_seg_pc_grad', 
               'bad_seg_pc_eeg', 'bad_chan_num', 'bad_chans', 'ica_ncomps_rej', 
@@ -544,7 +546,7 @@ def plot_rawdata(raw, savebase):
     
     """
 
-    fig = raw.pick(['meg', 'eeg']).plot(n_channels=np.inf, duration=raw.times[-1])
+    fig = raw.pick(['meg', 'eeg']).plot(n_channels=np.inf, duration=raw.times[-1], use_opengl=False, show=False)
 
     if savebase is not None:
         figname = savebase.format('rawdata')
@@ -943,6 +945,106 @@ def plot_spectra(raw, savebase=None):
     return fpath1, fpath2
 
 
+def plot_freqbands(raw, savebase=None):
+    """Plot power spectra for each sensor modality.
+    
+    Parameters
+    ----------
+    raw : :py:class:`mne.io.Raw <mne.io.Raw>`   
+        MNE Raw object.
+    savebase : str  
+        Base string for saving figures.
+        
+    Returns
+    -------
+    figname : str
+        Path to saved figure.
+    """
+    print(f"TYPE: {type(raw)}")
+    print(f"INFO: {raw.info}")
+    if 'dev_ctf_t' in raw.info.keys() and raw.info["dev_ctf_t"] is not None:
+        is_ctf = True
+    else:
+        is_ctf = False
+        
+    is_parc = np.any(['parcel' in ch for ch in raw.info['ch_names']])
+    if is_ctf:
+        # Note that with CTF mne.pick_types will return:
+        # ~274 axial grads (as magnetometers) if {picks: 'mag', ref_meg: False}
+        # ~28 reference axial grads if {picks: 'grad'}
+        channel_types = {
+            'Axial Grad (chtype=''mag'')': mne.pick_types(raw.info, meg='mag', ref_meg=False, exclude='bads'),
+            'EEG': mne.pick_types(raw.info, eeg=True, exclude='bads'),
+        }
+    elif is_parc:
+        channel_types = {
+            'Parcel': mne.pick_types(raw.info, misc=True, ref_meg=False, exclude='bads'),
+        }
+    else:
+        channel_types = {
+            'Magnetometers': mne.pick_types(raw.info, meg='mag', exclude='bads'),
+            'Gradiometers': mne.pick_types(raw.info, meg='grad', exclude='bads'),
+            'EEG': mne.pick_types(raw.info, eeg=True, exclude='bads'),
+        }
+
+    # Number of subplots, i.e. the number of different channel types in the fif file
+    nrows = 0
+    for _, c in sorted(channel_types.items()):
+        if len(c) > 0:
+            nrows += 1
+
+    if nrows == 0:
+        return None
+    
+    freq_bands = [(1,4), (4,8), (8,13), (13,30), (30,80), (80,150)]
+    ix = [i for i in range(len(freq_bands)) if np.logical_and(freq_bands[i][1] > raw.info['highpass'], freq_bands[i][0] < raw.info['lowpass'])]
+    freq_bands = [freq_bands[i] for i in ix]
+    freq_band_names = [['Delta', 'Theta', 'Alpha', 'Beta', 'Gamma', 'High Gamma'][i] for i in ix]
+    ncols = len(freq_bands)
+
+    fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(8, 0.5 + 1.5*nrows))
+    
+    row = 0
+    for name, chan_inds in sorted(channel_types.items()):
+        if len(chan_inds) == 0:
+            continue
+
+        # Plot spectra
+        psd = raw.compute_psd(
+            picks=chan_inds, 
+            n_fft=int(raw.info['sfreq']*2),
+            verbose=0)
+        
+        if nrows==1:
+            iax = ax
+        else:
+            iax = ax[row]
+        
+        for ifrq, (f1, f2) in enumerate(freq_bands):
+            inds = np.logical_and(psd.freqs>f1, psd.freqs<=(f2))
+            p = psd._data[:, inds].mean(axis=1)
+            if is_parc: # normalize because nilearn doesn't plot small values
+                plot_source_topo(p/p.std(), axis=iax[ifrq], cmap='Reds') 
+            else:
+                mne.viz.plot_topomap(p, psd.info, axes=iax[ifrq])
+            if row==0:
+                iax[ifrq].set_title(f"{freq_band_names[ifrq]}\n({f1}-{f2} Hz)")
+            if ifrq==0:
+                iax[ifrq].text(-0.1, 0.5, name, transform=iax[ifrq].transAxes, 
+                               rotation=90, va='center', ha='center', fontsize=10)
+
+        row += 1
+
+    # Save power bands spectra
+    if savebase is not None:
+        figname = savebase.format('freqbands')
+        fig.savefig(figname, dpi=150, transparent=True)
+        plt.close(fig)
+        return figname
+    else:
+        return None
+
+
 def plot_digitisation_2d(raw, savebase=None):
     """Plots the digitisation and headshape.
     
@@ -1204,6 +1306,12 @@ def plot_bad_ica(raw, ica, savebase):
 
             if title is not None:
                 axes[i][0].set_title(title, fontsize=12)
+                
+            # check if the bads were excluded
+            if np.isclose(ica._transform_raw(raw, 0, len(raw.times))[exclude_uniq[i],:].mean(), 0, atol=1e-9):
+                fig.text(0.5, lowerlimit + 1 / multiplier, 'Excluded from preprocessed data', ha='center', va='center', fontsize=14, color='black')
+            else:
+                fig.text(0.5, lowerlimit + 1 / multiplier, 'Not yet excluded from data', ha='center', va='center', fontsize=14, color='red')
 
     if savebase is not None:
         figname = savebase.format('ica')

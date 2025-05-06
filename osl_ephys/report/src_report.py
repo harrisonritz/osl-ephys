@@ -19,8 +19,7 @@ from tabulate import tabulate
 import inspect
 
 from . import preproc_report
-from ..source_recon import parcellation
-
+from ..source_recon import parcellation, batch
 
 def gen_html_data(config, outdir, subject, reportdir, logger=None, extra_funcs=None, logsdir=None):
     """Generate data for HTML report.
@@ -92,7 +91,11 @@ def gen_html_data(config, outdir, subject, reportdir, logger=None, extra_funcs=N
             copy("{}/{}".format(outdir, plot), "{}/{}/{}.png".format(reportdir, subject, surface))
 
     if "coreg_plot" in data:
-        data["plt_coreg"] = f"{subject}/coreg.html"
+        data["plt_coreg"] = f"{subject}/coreg.html" # this might not have been rendered yet (if using dask), so potentially need to copy it over later
+        if outdir.__str__() in data['coreg_plot']:
+            origfile = data["coreg_plot"]
+        else:
+            origfile = "{}/{}".format(outdir, data["coreg_plot"])
         copy("{}/{}".format(outdir, data["coreg_plot"]), "{}/{}/coreg.html".format(reportdir, subject))
 
     if "filters_cov_plot" in data:
@@ -110,6 +113,10 @@ def gen_html_data(config, outdir, subject, reportdir, logger=None, extra_funcs=N
     if "parc_corr_plot" in data:
         data["plt_parc_corr"] = f"{subject}/parc_corr.png"
         copy("{}/{}".format(outdir, data["parc_corr_plot"]), "{}/{}/parc_corr.png".format(reportdir, subject))
+
+    if "parc_freqbands_plot" in data and data["parc_freqbands_plot"] is not None:
+        data["plt_parc_freqbands"] = f"{subject}/parc_freqbands.png"
+        copy("{}/{}".format(outdir, data["parc_freqbands_plot"]), "{}/{}/parc_freqbands.png".format(reportdir, subject))
 
     # Logs
     if logsdir is None:
@@ -153,10 +160,7 @@ def gen_html_page(reportdir):
         subdir = Path(subdir)
         # Just generate the html page with the successful runs
         try:
-            report_data = pickle.load(open(reportdir / subdir / "data.pkl", "rb"))
-            if "filename" not in report_data:
-                continue
-            data.append(report_data)
+            data.append(pickle.load(open(reportdir / subdir / "data.pkl", "rb")))
         except:
             pass
 
@@ -249,10 +253,10 @@ def gen_html_summary(reportdir, logsdir=None):
         fid_err_table = pd.DataFrame()
         fid_err_table["Session ID"] = [subject_data[i]["fif_id"] for i in range(len(subject_data))]
         if len(subject_data[0]['fid_err'])==4:
-            for i_err, hdr in enumerate(["Nasion", "LPA", "RPA", "Med(HSP-MRI)"]):
+            for i_err, hdr in enumerate(["Nasion", "LPA", "RPA", "RMS(Headshape-MRI)"]):
                 fid_err_table[hdr] = [np.round(subject_data[i]['fid_err'][i_err], decimals=2) if 'fid_err' in subject_data[i].keys() else None for i in range(len(subject_data))]   
         else:
-            for i_err, hdr in enumerate(["Nasion", "LPA", "RPA"]):
+            for i_err, hdr in enumerate(["Nasion", "LPA", "RPA", "RMS(Headshape-MRI)"]):
                 fid_err_table[hdr] = [np.round(subject_data[i]['fid_err'][i_err], decimals=2) if 'fid_err' in subject_data[i].keys() else None for i in range(len(subject_data))]
         fid_err_table.index += 1 # Start indexing from 1
         data['coreg_table'] = fid_err_table.to_html(classes="display", table_id="coreg_tbl")
@@ -286,8 +290,8 @@ def gen_html_summary(reportdir, logsdir=None):
     if logsdir is None:
         logsdir = reportdir._str.replace('src_report', 'logs')
         
-    if os.path.exists(os.path.join(logsdir, 'osl_batch.log')):
-        with open(os.path.join(logsdir, 'osl_batch.log'), 'r') as log_file:
+    if os.path.exists(os.path.join(logsdir, 'batch_src.log')):
+        with open(os.path.join(logsdir, 'batch_src.log'), 'r') as log_file:
             data['batchlog'] = log_file.read()
     
     g = glob(os.path.join(logsdir, '*.error.log'))    
@@ -482,6 +486,8 @@ def update_config(old_config, new_config):
     config : dict
         Merge/updated config.
     """
+    if not isinstance(old_config, dict):
+        old_config = batch.load_config(old_config)
     old_stages = []
     for stage in old_config["source_recon"]:
         for k, v in stage.items():
