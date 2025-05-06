@@ -30,7 +30,6 @@ from . import (
 from ..report import src_report
 from ..report.preproc_report import plot_freqbands
 from ..utils.logger import log_or_print
-from ..utils.parallel import schedule_or_execute_task
 
 
 # --------------
@@ -416,12 +415,11 @@ def coregister(
         coreg_dir = rhino.get_coreg_filenames(outdir, subject)["basedir"]
         # The coreg display may have to be delayed until after Dask processing because of rendering
         # issues on dask workers
-        schedule_or_execute_task(subject, 
-                                 rhino.coreg_display, 
-                                 subjects_dir=outdir,
-                                 subject=subject,
-                                 display_outskin_with_nose=False,
-                                 filename=f"{coreg_dir}/coreg.html",
+        rhino.coreg_display( 
+            subjects_dir=outdir,
+            subject=subject,
+            display_outskin_with_nose=False,
+            filename=f"{coreg_dir}/coreg.html",
         )
         coreg_filename = f"{coreg_dir}/coreg.html".replace(f"{outdir}/", "")
             

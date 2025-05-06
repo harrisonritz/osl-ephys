@@ -25,7 +25,6 @@ from ..report import src_report
 from ..utils import logger as osl_logger
 from ..utils import validate_outdir, find_run_id, parallel
 from ..utils.misc import set_random_seed
-from ..utils.parallel import execute_main_thread_tasks
 
 import logging
 logger = logging.getLogger(__name__)
@@ -461,8 +460,6 @@ def run_src_batch(
     # Actually run the processes
     if dask_client:
         flags = parallel.dask_parallel_bag(pool_func, args)
-        # Wait for all tasks to finish, and then execute any main thread tasks
-        execute_main_thread_tasks()
     else:
         flags = [pool_func(*aa) for aa in args]
 
