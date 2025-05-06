@@ -1022,7 +1022,7 @@ def plot_freqbands(raw, savebase=None):
         
         for ifrq, (f1, f2) in enumerate(freq_bands):
             inds = np.logical_and(psd.freqs>f1, psd.freqs<=(f2))
-            p = psd.data[:, inds].mean(axis=1)
+            p = psd._data[:, inds].mean(axis=1)
             if is_parc: # normalize because nilearn doesn't plot small values
                 plot_source_topo(p/p.std(), axis=iax[ifrq], cmap='Reds') 
             else:
