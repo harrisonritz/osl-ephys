@@ -149,7 +149,15 @@ This involves coregistering a number of different coordinate systems:
 * sMRI (Native) space - defined with respect to the structural MRI scan.
 * MNI space - defined with respect to the MNI standard space brain.
 
-See the :doc:`tutorials_build/sourece-recon_coreg` tutorial to see how to coregister the data.
+See the :doc:`tutorials_build/source-recon_coreg` tutorial to see how to coregister the data.
+
+How do I Freesurfer for source reconstruction?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Make sure FreeSurfer is installed appropriately, and use ``source_recon.setup_freesurfer(/path/to/freesurfer)`` to set up the FreeSurfer environment within your script.
+You can run Freesurfer's ``recon-all`` either using FreeSurfer directly, or using the ``source_recon.recon_all`` wrapper. Note, that this is not available from the config API, because FreeSurfer has it's own way of using distributed processing, and this function is computationally heavy.
+Next, you can use the ``source_recon.run_src_chain`` or ``source_recon.run_src_batch`` functions to run the source reconstruction pipeline. Make sure to specify ``surface_extraction_method='freesurfer'`` when calling either function.
+An example pipeline can be found in the `osl-ephys examples <https://github.com/OHBA-analysis/osl-ephys/blob/main/examples/misc/freesurfer_source_recon.py>`_.
 
 How do I use a custom function in the pipeline?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -240,8 +248,7 @@ Does osl-ephys contain functionality for training generative models (e.g., HMM, 
 
 osl-ephys does not contain functionality for training generative models, but we have developed another Python package, osl-dynamics, which contains functionality for training generative models. You can find osl-dynamics `here <https://github.com/OHBA-analysis/osl-dynamics>`_, and the documentation `here <https://osl-dynamics.readthedocs.io/en/latest/>`_.
 
-Citing osl_ephys
---------------
+
 How can I cite the package?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

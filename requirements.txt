@@ -16,7 +16,7 @@ nibabel~=5.0.1
 opencv-python~=4.7.0.72
 numba~=0.58.0
 parse~=1.19.0
-dask>=2024.9.0
+dask~=2023.3.2
 distributed~=2023.3.2
 
 # Docs
