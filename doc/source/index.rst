@@ -36,18 +36,14 @@ The package heavily builds on MNE-Python, and for the source recon module, on FS
 If you would like to request new features or if you're confident that you have found a bug, please create a new issue on the `GitHub issues <https://github.com/OHBA-analysis/osl-ephys/issues>`_ page.
 
 .. |logo1| image:: https://avatars.githubusercontent.com/u/15248840?s=200&v=4
-    :width: 125px
+    :height: 200px
     :target: https://www.win.ox.ac.uk/research/our-locations/OHBA
 
 .. |logo2| image:: https://www.win.ox.ac.uk/images/site-logos/oxcin_logo.png
-    :width: 200px
+    :height: 200px
     :target: https://www.win.ox.ac.uk/
 
-.. |logo3| image:: https://www.win.ox.ac.uk/images/site-logos/ox-logo
-    :width: 90px
-    :target: http://www.ox.ac.uk/
-
-|logo1| |logo2| |logo3|
+|logo2| |logo1|
 
 -----------------------
 
