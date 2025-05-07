@@ -1,9 +1,9 @@
-cff-version: 2.0.0
-message: "If you use this software, please cite the software itself, as well as the paper listed in the preferred-citation field. osl-ephys is based on MNE-Python and the Source Recon module on FSL. Please cite these packages appropriately."
-title: "OHBA Software Library for the Analysis of electrophysiology data (osl-ephys)"
-version: 2.0.0
-date-released: "2023-01-24"
-commit: 46aff022171862d1ea582c4c1dcb77ead6459a53
+cff-version: 2.1.0
+message: "If you use this software, please cite the software itself, as well as the paper listed in the preferred-citation field. osl-ephys is based on MNE-Python and the Source Recon module on FSL/FreeSurfer. Please cite these packages appropriately."
+title: "osl-ephys"
+version: 2.1.0
+date-released: "2025-02-05"
+commit: 2201385db8ed1f238b36361b6ea864d342c2293f
 doi: 10.5281/zenodo.6875060
 keywords:
   - MEG
@@ -27,15 +27,15 @@ authors:
     given-names: Mark W.
     orcid: https://orcid.org/0000-0001-8460-8854
 preferred-citation:
-  title: "osl: A Python toolbox for M/EEG data analysis"
-  journal: "BioRxiv"
+  title: "osl-ephys: a Python toolbox for the analysis of electrophysiology data"
+  journal: "Frontiers in Neuroscience"
   type: article
-  year: 
-  volume: 
+  year: 2025
+  volume: 19
   issue: 
-  start: 
+  start: 1522675
   end: 
-  doi: 
+  doi: https://doi.org/10.3389/fnins.2025.1522675
   authors:
   - family-names: van Es
     given-names: Mats W.J.

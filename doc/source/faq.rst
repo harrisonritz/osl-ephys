@@ -248,8 +248,7 @@ Does osl-ephys contain functionality for training generative models (e.g., HMM, 
 
 osl-ephys does not contain functionality for training generative models, but we have developed another Python package, osl-dynamics, which contains functionality for training generative models. You can find osl-dynamics `here <https://github.com/OHBA-analysis/osl-dynamics>`_, and the documentation `here <https://osl-dynamics.readthedocs.io/en/latest/>`_.
 
-Citing osl_ephys
---------------
+
 How can I cite the package?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
