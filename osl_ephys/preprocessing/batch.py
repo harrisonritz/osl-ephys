@@ -143,10 +143,19 @@ def import_data(infile, preload=True):
     elif os.path.splitext(infile)[1] == ".mff":
         logger.info("Detected EGI file format, using mne.io.read_raw_egi")
         raw = mne.io.read_raw_egi(infile, preload=preload)
+    
+    # Curry
+    elif os.path.splitext(infile)[1] in [".dat", ".dap", ".rs3", ".cdt", ".cdt.dpa", ".cdt.cef", ".cef"]:
+        logger.info("Detected Curry file format, using mne.io.read_raw_curry")
+        raw = mne.io.read_raw_curry(infile, preload=preload)
         
     # Other formats not accepted
     else:
-        msg = "Unable to determine file type of input {0}".format(infile)
+        try:
+            logger.info("Trying to automatically detect file type")
+            raw = mne.io.read_raw(infile, preload=preload)
+        except:
+            msg = "Unable to determine file type of input {0}".format(infile)
         logger.error(msg)
         raise ValueError(msg)
 
