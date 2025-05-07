@@ -16,8 +16,6 @@ import matplotlib
 import mne
 import numpy as np
 import pandas as pd
-#import sails
-from scipy import signal
 
 import osl_ephys
 
@@ -34,10 +32,6 @@ import matplotlib.pyplot as plt
 # These are both available to download from the osl-ephys Workshop OSF page. The following code cell will download and unzip these files if they don't already exist on your computer. We're assuming that the current working directory of this notebook is the correct place to download the data. If you've already downloaded and unzipped the data by hand, then this cell should just tell you that everythiing is in place!
 #
 # You'll need ``osfclient`` to be installed in your python environment for this to work. This should be included as a dependency in the workshop environment
-
-
-#preprocessed_meg = 'sub-09_ses-meg_task-facerecognition_run-01_meg_preproc_raw.fif'
-#preprocessed_meg = '/Users/andrew/Downloads/mf2pt2_sub-CC110037_ses-rest_task-rest_megtransdef_preproc-raw.fif'
 
 basedir = os.getcwd()
 
@@ -285,16 +279,18 @@ for ii in range(4):
 #
 # Let's run a group analysis to illustrate these principles. We start by finding the our datafiles on disk. These files contain first-level GLM-Spectra that have already been fitted for you.
 
-
+# Download the precomputed first level data for all datasets.
 name = "camcan_fl_data.npy"
 get_data(name, basedir)
 
+# Load the precomputed first level data for all datasets.
 fl_data = np.load(os.path.join(basedir, name))
 fl_contrast_names = ['Intercept', 'LinearTime', 'HeartRate', 'VEOG', 'BadSegments']
-# Load the MNE info and frequency vector for this data
 
+# Load the MNE info and frequency vector for this data
 # We take 'mags' as this group analysis was run on combined gradiometers so we only have 102 channels.
-ginfo = mne.io.read_raw_fif(preprocessed_meg, preload=False).pick_types(meg='mag').info
+name = "mf2pt2_sub-CC220999_ses-rest_task-rest_megtransdef_preproc-raw.fif"
+ginfo = mne.io.read_raw_fif(os.path.join(basedir, name), preload=False).pick_types(meg='mag').info
 # We can use hte same frequency vector as for the first levels
 gfreq = glmspec2.f
 
@@ -408,7 +404,7 @@ with plt.rc_context({'font.size': 10}):
 #%%
 # The design matrix has 96 rows as expected, one for each dataset.
 #
-# We see our 16 regressors quantifying the mean of the six runs for each particpant and the parametric regressor looking at differences in runs in the final column. The first contrast combines across the 16 mean terms to make a group average and the second contrast simply isolates the final 'run' regressor.
+# We see our 16 regressors quantifying the mean of the six runs for each participant and the parametric regressor looking at differences in runs in the final column. The first contrast combines across the 16 mean terms to make a group average and the second contrast simply isolates the final 'run' regressor.
 #
 # Next we can take a look at the group data.
 
@@ -480,8 +476,6 @@ for ii in range(5):
 # We see a broadly similar structure to the point estimates but now can see that the low frequency EOG effect is likely to be very strong. The linear trend and bad-segment effects are still substantial but have much smaller t-statistics.
 #
 # Finally, we can also explore the extent to which our first level parameter estimates varied across the six runs of each participant. Let's repeat our plot one more time but selecting the second group level contrast.
-
-
 
 
 plt.figure(figsize=(16, 9))
@@ -608,9 +602,3 @@ ax.hlines(-critical_value, xl[0], xl[1], 'r')
 # Shafto, M.A., Tyler, L.K., Dixon, M., Taylor, J.R., Rowe, J.B., Cusack, R., Calder, A.J., Marslen-Wilson, W.D., Duncan, J., Dalgleish, T., Henson, R.N., Brayne, C., Cam-CAN, & Matthews, F.E. (2014). The Cambridge Centre for Ageing and Neuroscience (Cam-CAN) study protocol: a cross-sectional, lifespan, multidisciplinary examination of healthy cognitive ageing. BMC Neurology, 14(204). doi:https://doi.org/10.1186/s12883-014-0204-1
 #
 # Andrew J. Quinn, Lauren Z. Atkinson, Chetan Gohil, Oliver Kohl, Jemma Pitt, Catharina Zich, Anna C. Nobre, Mark W. Woolrich; The GLM-spectrum: A multilevel framework for spectrum analysis with covariate and confound modelling. Imaging Neuroscience 2024; 2 1–26. doi: https://doi.org/10.1162/imag_a_00082
-
-
-
-
-
-
