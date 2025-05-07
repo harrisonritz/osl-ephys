@@ -19,7 +19,7 @@ This package was developed by the Oxford Centre for Human Brain Activity (OHBA) 
 If you find this toolbox useful, please cite the following:
 
 
-   **Van Es, M.W.J., Gohil, C., Quinn, A.J., Woolrich, M.W. (2024). bioRxiv**
+   **van Es, M. W., Gohil, C., Quinn, A. J., & Woolrich, M. W. (2025). osl-ephys: A Python toolbox for the analysis of electrophysiology data. Frontiers in Neuroscience, 19, 1522675.**
 
 
    **Quinn, A.J., Van Es, M.W.J., Gohil, C., & Woolrich, M.W. (2022). OHBA Software Library in Python (OSL) (0.1.1). Zenodo. https://doi.org/10.5281/zenodo.6875060**
@@ -39,7 +39,7 @@ If you would like to request new features or if you're confident that you have f
     :width: 125px
     :target: https://www.win.ox.ac.uk/research/our-locations/OHBA
 
-.. |logo2| image:: https://www.win.ox.ac.uk/images/site-logos/integrative-neuroimaging-rgb
+.. |logo2| image:: https://www.win.ox.ac.uk/images/site-logos/oxcin_logo.png
     :width: 200px
     :target: https://www.win.ox.ac.uk/
 
