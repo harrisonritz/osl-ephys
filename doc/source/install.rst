@@ -5,9 +5,28 @@ A full installation of the OHBA Software Library includes:
 
 - `FSL <https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FslInstallation>`_ (FMRIB Software Library) - only needed if you want to do volumetric source reconstruction.
 - `FreeSurfer <https://surfer.nmr.mgh.harvard.edu/fswiki/DownloadAndInstall>`_ (FreeSurfer) - only needed if you want to do surface-based source reconstruction.
-- `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/miniconda-install.html>`_ (or `Anaconda <https://docs.anaconda.com/free/anaconda/install/index.html>`_).
+- `Miniforge <https://conda-forge.org/download/>`_ (or `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/miniconda-install.html>`_ / `Anaconda <https://docs.anaconda.com/free/anaconda/install/index.html>`_).
 - `osl-ephys <https://github.com/OHBA-analysis/osl-ephys>`_ (OSL Ephys Toolbox).
 - `osl-dynamics <https://github.com/OHBA-analysis/osl-dynamics>`_ (OSL Dynamics Toolbox) - only needed if you want to train models for dynamics.
+
+
+Conda / Mamba Installation
+--------------------------
+
+Miniforge (:code:`conda`) can be installed with:
+
+.. code::
+
+    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
+    rm Miniforge3-$(uname)-$(uname -m).sh
+
+Mamba (:code:`mamba`) can be installed with:
+
+.. code::
+
+    conda install -n base -c conda-forge mamba
+
 
 Linux Instructions
 ------------------
@@ -28,13 +47,18 @@ If you're using a high-performance computing cluster, you may already have :code
 
 and skip step 2.
 
-3. Install osl-ephys and osl-dynamics::
+3. Install osl-ephys::
 
-    curl https://raw.githubusercontent.com/OHBA-analysis/osl/main/envs/linux-full.yml > osl.yml
+    curl https://raw.githubusercontent.com/OHBA-analysis/osl/main/envs/linux.yml > osl.yml
     conda env create -f osl.yml
     rm osl.yml
 
-This will create a conda environment called :code:`osl` which contains both OSL and osl-dynamics.
+This will create a conda environment called :code:`osle`.
+
+4. Install osl-dynamics::
+
+Follow the steps on https://osl-dynamics.readthedocs.io/en/latest/install.html#, which will create a conda environment called :code:`osld`.
+
 
 Mac Instructions
 ----------------
@@ -49,13 +73,18 @@ Instructions:
     bash Miniconda3-latest-MacOSX-x86_64.sh
     rm Miniconda3-latest-MacOSX-x86_64.sh
 
-3. Install osl-ephys and osl-dynamics::
+3. Install osl-ephys::
 
     curl https://raw.githubusercontent.com/OHBA-analysis/osl-ephys/main/envs/mac-full.yml > osl.yml
     conda env create -f osl.yml
     rm osl.yml
 
-This will create a conda environment called :code:`osl` which contains both osl-ephys and osl-dynamics.
+This will create a conda environment called :code:`osle`.
+
+4. Install osl-dynamics::
+
+Follow the steps on https://osl-dynamics.readthedocs.io/en/latest/install.html#, which will create a conda environment called :code:`osld`.
+
 
 Windows Instructions
 --------------------
@@ -72,30 +101,34 @@ Instructions:
     bash Miniconda3-latest-Linux-x86_64.sh
     rm Miniconda3-latest-Linux-x86_64.sh
 
-3. Install osl-ephys and osl-dynamics::
+3. Install osl-ephys::
 
     curl https://raw.githubusercontent.com/OHBA-analysis/osl-ephys/main/envs/linux-full.yml > osl.yml
     conda env create -f osl.yml
     rm osl.yml
 
-This will create a conda environment called :code:`osl` which contains both osl-ephys and osl-dynamics.
+This will create a conda environment called :code:`osle`.
+
+4. Install osl-dynamics::
+
+Follow the steps on https://osl-dynamics.readthedocs.io/en/latest/install.html#, which will create a conda environment called :code:`osld`.
 
 Loading the packages
 --------------------
 
-To use osl-ephys/osl-dynamics you need to activate the conda environment::
+To use osl-ephys you need to activate the conda environment::
 
-    conda activate osl
+    conda activate osle
 
-**You need to do every time you open a new terminal.** You know if the :code:`osl` environment is activated if it says :code:`(osl)[...]` at the start of your terminal command line.
+**You need to do every time you open a new terminal.** You know if the :code:`osle` environment is activated if it says :code:`(osle)[...]` at the start of your terminal command line.
 
-Note, if you get a :code:`conda init` error when activating the :code:`osl` environment during a job on an HPC cluster, you can resolve this by replacing::
+Note, if you get a :code:`conda init` error when activating the :code:`osle` environment during a job on an HPC cluster, you can resolve this by replacing::
 
-    conda activate osl
+    conda activate osle
 
 with::
 
-    source activate osl
+    source activate osle
 
 Integrated Development Environments (IDEs)
 ------------------------------------------
@@ -115,36 +148,31 @@ Test the installation
 
 The following should not raise any errors::
 
-    conda activate osl
+    conda activate osle
     python
     >> import osl_ephys
-    >> import osl_dynamics
 
 Get the latest source code (optional)
 -------------------------------------
 
 If you want the very latest code you can clone the GitHub repo. This is only neccessary if you want recent changes to the package that haven't been released yet.
 
-First install osl-ephys/osl-dynamics using the instructions above. Then clone the repo and install locally from source::
+First install osl-ephys using the instructions above. Then clone the repo and install locally from source::
 
-    conda activate osl
+    conda activate osle
 
     git clone https://github.com/OHBA-analysis/osl-ephys.git
     cd osl-ephys
     pip install -e .
     cd ..
 
-    git clone https://github.com/OHBA-analysis/osl-dynamics.git
-    cd osl-dynamics
-    pip install -e .
-
 After you install from source, you can run the code with local changes. You can update the source code using::
 
     git pull
 
-within the :code:`osl-ephys` or :code:`osl-dynamics` directory.
+within the :code:`osl-ephys` directory.
 
 Getting help
 ------------
 
-If you run into problems while installing OSL, please open an issue on the `GitHub repository <https://github.com/OHBA-analysis/osl-ephys/issues>`_.
+If you run into problems while installing osl-ephys, please open an issue on the `GitHub repository <https://github.com/OHBA-analysis/osl-ephys/issues>`_.
