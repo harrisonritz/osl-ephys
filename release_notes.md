@@ -56,6 +56,7 @@ You need to update the version number the the following files to version number 
 - `setup.py`
 - `osl_ephys/__init__.py`
 - `doc/source/conf.py`
+- `CITATION.cff`
 
 Don't forget to commit these changes before continuing.
 
