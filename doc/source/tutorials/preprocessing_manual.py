@@ -24,7 +24,7 @@ Building a preprocessing pipeline with functions from MNE-Python and osl-ephys.
 2. **Preprocessing**
     1. Filtering: band-pass and notch filtering
     2. Automated bad segment/channel detection
-    3. Removing cardiac and occular artifacts with ICA
+    3. Removing cardiac and ocular artifacts with ICA
 3. **Creating Epochs**
 4. **Concluding remarks**
 
@@ -41,18 +41,20 @@ import mne
 import osl_ephys
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 from pprint import pprint
 
 basedir = os.getcwd()
 
 def get_data(name):
     """Download a dataset from OSF."""
-    if os.path.exists(name):
-        return f"{name} already downloaded. Skipping.."
-    os.system(f"osf -p zxb6c fetch '1. Preprocessing/{name}.zip'")
-    os.system(f"unzip -o {name}.zip")
-    os.remove(f"{name}.zip")
-    return f"Data downloaded to: {name}"
+    extension = "fif"
+    if any(Path(name).glob(f"*.{extension.lstrip('.')}")):
+        return pprint(f"{name} already downloaded. Skipping..")
+    os.system(f"osf -p zxb6c fetch '1.Preprocessing/data/data.zip'")
+    os.system(f"unzip -o {name}/data.zip")
+    os.remove(f"{name}/data.zip")
+    return pprint(f"Data downloaded to: {name}")
 
 # Download the dataset (~2.2 GB)
 get_data(os.path.join(basedir, "data"))
@@ -66,7 +68,7 @@ os.makedirs(outdir, exist_ok=True)
 #%%
 # Loading the data
 # ^^^^^^^^^^^^^^^^
-# The original data contains multiple runs for each subject. We will first fetch all data using the osl-ephys ``Study`` utility.  study contains all files that match the pattern, where each '{...}' is replaced by a wildcard. 
+# The original data contains multiple runs for each subject. We will first fetch all data using the osl-ephys ``Study`` utility.  ``Study`` contains all files that match the pattern, where each '{...}' is replaced by a wildcard. 
 # We can use the ``get`` method to get a list of all matching files, optionally filtered by either of the wildcards. 
 study = osl_ephys.utils.Study(os.path.join(basedir, 'data', '{subj}_ses-meg_task-facerecognition_{run}_meg.fif'))
 
@@ -135,7 +137,7 @@ fig.set_size_inches(8,8)
 # which parts of the data are noise and which are not. If we preprocess our data too rigorously, we might risk 
 # throwing out the baby with the bathwater. For this reason, we are cautious and interact with the data when we 
 # develop our preprocessing pipeline. Some of the things that are useful to look at for checking the data quality 
-# is the variance of the data (over time, and over channels), the time domain signal traces, and the frequency 
+# are the variance of the data (over time, and over channels), the time domain signal traces, and the frequency 
 # domain power spectral density (PSD, or power).
 
 # Let's create a function with which we can easily look at the variance of the data
@@ -291,7 +293,7 @@ fig, ax = plot_var(raw_badchan)
 fig = raw_badchan.plot(duration=100, n_channels=50)
 
 #%%
-# Removing cardiac and occular artifacts with ICA
+# Removing cardiac and ocular artifacts with ICA
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 # As we can see in the data browser, there are still some sources of high variance present in the data. Channel MEG0143 has a strong rhythmic spiking present, and there are other high variance transient events. The former is most likely due to cardiac activity (the heart contains an electrical pacemaker, and is also a muscle), which has a strong effect on the MEG signal (less so in EEG). Since this is a regular signal that is present in many channels, removing it with bad segment/channel detection is unfeasible. Instead, Independent Component Analysis is a common technique for removing this type of noise.
 # Similarly, eye blink and saccades have a big influence on the MEG (and EEG) data. Again due to eye muscle activity, but also because the eye itself is polarized (the cornea is net positive, and the retina net negative), and thus moving the eye changes the magnetic field.
@@ -307,7 +309,7 @@ ica.fit(raw_badchan.copy().filter(l_freq=1, h_freq=None))
 ica = mne.preprocessing.read_ica('ica.fif')
 
 #%%
-# We now have to label the components that we think correspond to cardiac/occular activity. Generally, there are two strategies to use here (alse see `MNE-Python's tutorial on this <https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html#sphx-glr-auto-tutorials-preprocessing-40-artifact-correction-ica-py>`_):
+# We now have to label the components that we think correspond to cardiac/ocular activity. Generally, there are two strategies to use here (alse see `MNE-Python's tutorial on this <https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html#sphx-glr-auto-tutorials-preprocessing-40-artifact-correction-ica-py>`_):
 #
 # 1. Correlating component time courses with the recorded ECG and EOG data. Those components that have a high correlation likely correspond to these types of noise.
 # 2. Visualizing the component time course and spatial topography and use our knowledge of the biophysics of these signals to manually detect components corresponding to these types of noise.
@@ -326,7 +328,7 @@ print(ecg_indices)
 ica.exclude = ecg_indices
 
 #%%
-# Now we do the equivalent for occular artifacts.
+# Now we do the equivalent for ocular artifacts.
 
 eog_indices, eog_scores = ica.find_bads_eog(raw, ch_name=['EEG061', 'EEG062'])
 print(eog_indices)
@@ -376,7 +378,12 @@ print(f'These are the contents of ica.labels_: {ica.labels_}')
 # Remove bad components from the data
 clean = ica.apply(raw_badchan.copy())
 
+# Save the updated ICA object
+fname_ica = sub1run1.replace('data', 'preprocessed').replace('.fif', '_ica.fif')
+ica.save(fname_ica, overwrite=True)
+
 # Save the clean data
+fname_data = sub1run1.replace('data', 'preprocessed').replace('.fif', '_preproc_raw.fif')
 clean.save(fname_data, overwrite=True)
 
 #%%
