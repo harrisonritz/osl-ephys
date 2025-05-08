@@ -43,6 +43,24 @@ class GLMBaseResult:
         self.info = info
 
 
+    def compute_cohens_f2(self, reg_ind):
+        """Compute a Cohens F-squared effect size associated with a specific regressor.
+
+
+        Parameters
+        ----------
+        reg_ind : int
+            regressor of interest
+
+        Returns
+        -------
+        array
+            Cohen's F-squared values
+
+        """
+        return glm.fit.cohens_f2(self.design, self.data, reg_ind, model=self.model)
+
+
     def save_pkl(self, outname, overwrite=True, save_data=False):
         """Save GLM-Epochs result to a pickle file.
 
