@@ -1,13 +1,15 @@
-#%%
-# Challenge 2 - SOLUTION!
-# ***********
-# As we now have a regression model, we can compute the spectrum that the GLM-Spectrum would predict for different combinations of the predictor variables.
-#
-# This is a linear prediction with a classic standard form. For the specific model we have been using, the equation looks like this.
-#
-# spectrum = InterceptParameter * InterceptValue + LinearParameter * LinearValue
-#
-# We can see the predictor values by looking at the design matrix.
+"""
+Challenge 2 - SOLUTION!
+=======================
+
+As we now have a regression model, we can compute the spectrum that the GLM-Spectrum would predict for different combinations of the predictor variables.
+
+This is a linear prediction with a classic standard form. For the specific model we have been using, the equation looks like this.
+
+spectrum = InterceptParameter * InterceptValue + LinearParameter * LinearValue
+
+We can see the predictor values by looking at the design matrix.
+"""
 
 print(glmsp.design.design_matrix)
 

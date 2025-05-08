@@ -1,12 +1,11 @@
+"""
+Challenge
+=========
 
+Which parts of the spectrum show a statistically significant group average for the first level effect of the VEOG channel?
 
-#%%
-# Challenge
-#
-# Which parts of the spectrum show a statistically significant group average for the first level effect of the VEOG channel?
-#
-
-# Let's run the permutations for the age effect:
+Let's run the permutations for the age effect:
+"""
 
 group_contrast = 0  # Group mean
 firstlevel_contrast = 3  # VEOG
