@@ -1,7 +1,6 @@
 # Conda Environments
 
-- `linux.yml`: for Linux computers.
-- `mac.yml`: for Mac computers.
+- `osle.yml`: for Linux or MacOS computers.
 - `hbaws.yml`: for Oxford OHBA workstation computers.
 - `bmrc.yml`: for the Oxford BMRC cluster.
 
