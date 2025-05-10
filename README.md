@@ -43,7 +43,7 @@ conda activate osle
 pip install -e .
 ```
 
-Remember to set the following environemnt variable:
+Remember to set the following environment variable:
 ```
 export PYVISTA_OFF_SCREEN=true
 ```

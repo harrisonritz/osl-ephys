@@ -6,8 +6,8 @@
 
 These can be install with:
 ```
-git clone https://github.com/OHBA-analysis/osl.git
-cd osl
+git clone https://github.com/OHBA-analysis/osl-ephys.git
+cd osl-ephys
 conda env create -f envs/<os>.yml
 conda activate osle
 pip install -e .
