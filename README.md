@@ -85,8 +85,13 @@ cd osl_ephys/tests
 pytest test_file_handling.py
 ```
 
-Build documentation (if `build_sphinx` is not recognised, first try `pip install sphinx==5.3.0`):
+Build documentation:
 ```
-python setup.py build_sphinx
+sphinx-build -b html doc/source build
 ```
 Compiled docs can be found in `doc/build/html/index.html`.
+
+If you get errors regarding missing packages, install the requirements:
+```
+pip install -r requirements.txt
+```
