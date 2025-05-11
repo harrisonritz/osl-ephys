@@ -74,6 +74,11 @@ rm -rf osl-ephys
 
 ## For developers
 
+Install all the requirements:
+```
+pip install -r requirements.txt
+```
+
 Run tests:
 ```
 cd osl_ephys
@@ -85,13 +90,8 @@ cd osl_ephys/tests
 pytest test_file_handling.py
 ```
 
-Build documentation:
+Build documentation locally:
 ```
 sphinx-build -b html doc/source build
 ```
 Compiled docs can be found in `doc/build/html/index.html`.
-
-If you get errors regarding missing packages, install the requirements:
-```
-pip install -r requirements.txt
-```
