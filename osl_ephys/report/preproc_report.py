@@ -16,6 +16,7 @@ import tempfile
 import pickle
 import pathlib
 import re
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -27,6 +28,8 @@ from mne.channels.channels import channel_type
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from pathlib import Path
+from copy import deepcopy
+from glob import glob
 
 try:
     from scipy.ndimage import uniform_filter1d
@@ -105,7 +108,7 @@ def get_header_id(raw):
 
 
 def gen_html_data(
-    raw, outdir, ica=None, preproc_fif_filename=None, logsdir=None, run_id=None
+    raw, outdir, ica=None, events=None, event_id=None, preproc_fif_filename=None, logsdir=None, run_id=None, custom_figures=None
 ):
     """Generate HTML web-report for an MNE data object.
 
@@ -117,6 +120,10 @@ def gen_html_data(
         Directory to write HTML data and plots to.
     ica : :py:class:`mne.preprocessing.ICA <mne.preprocessing.ICA>`
         ICA object.
+    events : array, shape (n_events, 3)
+        The events.
+    event_id : dict
+        The event IDs.
     preproc_fif_filename : str
         Filename of file output by preprocessing
     logsdir : str
@@ -124,7 +131,15 @@ def gen_html_data(
         to be in reportdir.replace('report', 'logs')
     run_id : str
         Run ID.
+    custom_figures : dict
+        Dictionary of custom figures to include in the report. Keys should be the
+        figure names, and values should be the matplotlib figure objects.
     """
+    
+    # Silence all matplotlib show() warnings
+    warnings.filterwarnings("ignore", message=".*is non-interactive, and thus cannot be shown.*")
+    warnings.filterwarnings("ignore", message="nperseg.*is greater than input length.*")
+    warnings.filterwarnings("ignore", message=".*more than 20 mm from head frame origin.*")
 
     data = {}
     data['filename'] = raw.filenames[0]
@@ -201,7 +216,12 @@ def gen_html_data(
     # Bad channels
     bad_chans = raw.info['bads']
     if len(bad_chans) == 0:
-        data['bad_chans'] = 'No bad channels.'
+        try: # check if the bad channels were saved elsewhere because of interpolation
+            data['bad_chans'] = 'Bad channels: {}'.format(', '.join(raw.info['temp']['bads']))
+            bad_chans = raw.info['temp']['bads']
+            raw.info['bads'] = bad_chans
+        except:
+            data['bad_chans'] = 'No bad channels.'
     else:
         data['bad_chans'] = 'Bad channels: {}'.format(', '.join(bad_chans))
     # For summary report:
@@ -223,6 +243,11 @@ def gen_html_data(
     data['plt_digitisation'] = plot_digitisation_2d(raw, savebase)
     data['plt_artefacts_eog'] = plot_eog_summary(raw, savebase)
     data['plt_artefacts_ecg'] = plot_ecg_summary(raw, savebase)
+    data['plt_events'] = plot_events(events, event_id, savebase)
+    
+    # add custom figures
+    data['plt_custom_figures'] = plot_custom_figures(custom_figures, savebase)
+        
     #filenames = plot_artefact_scan(raw, savebase)
     #data.update(filenames)
 
@@ -280,7 +305,7 @@ def gen_html_data(
         pickle.dump(data, outfile)
 
 
-def gen_html_page(outdir, logsdir=None):
+def gen_html_page(outdir, logsdir=None, custom_figures=None):
     """Generate an HTML page from a report directory.
 
     Parameters
@@ -344,7 +369,7 @@ def gen_html_page(outdir, logsdir=None):
     return True
 
 
-def gen_html_summary(reportdir, logsdir=None):
+def gen_html_summary(reportdir, logsdir=None, custom_figures=None):
     """Generate an HTML summary from a report directory.
 
     Parameters
@@ -384,8 +409,15 @@ def gen_html_summary(reportdir, logsdir=None):
 
     # Create plots
     os.makedirs(f"{reportdir}/summary", exist_ok=True)
-
     data["plt_config"] = subject_data[0]["plt_config"]
+    existing_figs = {ig.split('/')[-1].split('custom_')[1].split('.png')[0]: ig.replace(str(reportdir) + '/', '') for ig in glob(f"{reportdir}/summary/*.png")}
+    data['plt_custom_figures'] = plot_custom_figures(custom_figures, f"{reportdir}/summary/{{}}.png")
+    if len(existing_figs)>0:
+       if data['plt_custom_figures'] is None:
+           data['plt_custom_figures'] = existing_figs
+       else:
+           data['plt_custom_figures'] |= existing_figs
+
     if "extra_funcs" in subject_data[0]:
         data["extra_funcs"] = subject_data[0]["extra_funcs"]
     data['tbl'] = gen_summary_data(subject_data)
@@ -714,7 +746,7 @@ def plot_sensors(raw, savebase=None):
             coil_types = ['grad_longitude', 'grad_lattitude']
         fig, ax = plt.subplots(1,len(coil_types), figsize=(16,4))
         for k in range(len(coil_types)):
-            raw.copy().pick_channels(channels[coil_types[k]]).plot_sensors(axes=ax[k], show=False)
+            raw.copy().pick_channels(channels[coil_types[k]]).plot_sensors(axes=ax[k], show=False, verbose='ERROR')
             ax[k].set_title(f"{coil_types[k].replace('_', ' ')}")
         plt.tight_layout()
     else:
@@ -892,7 +924,7 @@ def plot_spectra(raw, savebase=None):
             n_fft=int(raw.info['sfreq']*2),
             verbose=0).plot(
                         axes=ax[row],
-                        show=False)
+                        show=False,)
 
         ax[row].set_title(name, fontsize=12)
 
@@ -922,7 +954,8 @@ def plot_spectra(raw, savebase=None):
         n_fft=int(raw.info['sfreq']*2),
         verbose=0).plot(
                     axes=ax[row],
-                    show=False)
+                    show=False,
+                )
 
         ax[row].set_title(name, fontsize=12)
 
@@ -960,8 +993,6 @@ def plot_freqbands(raw, savebase=None):
     figname : str
         Path to saved figure.
     """
-    print(f"TYPE: {type(raw)}")
-    print(f"INFO: {raw.info}")
     if 'dev_ctf_t' in raw.info.keys() and raw.info["dev_ctf_t"] is not None:
         is_ctf = True
     else:
@@ -1010,7 +1041,8 @@ def plot_freqbands(raw, savebase=None):
             continue
 
         # Plot spectra
-        psd = raw.compute_psd(
+        raw_zscore = deepcopy(raw).apply_function(lambda x: ((x - np.mean(x)) / np.std(x)), picks=chan_inds)
+        psd = raw_zscore.compute_psd(
             picks=chan_inds, 
             n_fft=int(raw.info['sfreq']*2),
             verbose=0)
@@ -1023,10 +1055,10 @@ def plot_freqbands(raw, savebase=None):
         for ifrq, (f1, f2) in enumerate(freq_bands):
             inds = np.logical_and(psd.freqs>f1, psd.freqs<=(f2))
             p = psd._data[:, inds].mean(axis=1)
-            if is_parc: # normalize because nilearn doesn't plot small values
-                plot_source_topo(p/p.std(), axis=iax[ifrq], cmap='Reds') 
+            if is_parc: # normalize because nilearwn doesn't plot small values
+                plot_source_topo(p/p.std(), axis=iax[ifrq], cmap='hot') 
             else:
-                mne.viz.plot_topomap(p, psd.info, axes=iax[ifrq])
+                mne.viz.plot_topomap(p, psd.info, axes=iax[ifrq], cmap='hot')
             if row==0:
                 iax[ifrq].set_title(f"{freq_band_names[ifrq]}\n({f1}-{f2} Hz)")
             if ifrq==0:
@@ -1040,7 +1072,11 @@ def plot_freqbands(raw, savebase=None):
         figname = savebase.format('freqbands')
         fig.savefig(figname, dpi=150, transparent=True)
         plt.close(fig)
-        return figname
+        
+        savebase = pathlib.Path(savebase)
+        filebase = savebase.parent.name + "/" + savebase.name
+        fpath = filebase.format('freqbands')
+        return fpath
     else:
         return None
 
@@ -1237,6 +1273,9 @@ def plot_bad_ica(raw, ica, savebase):
     
     """
 
+    # Set MNE to only show critical messages
+    mne.set_log_level('ERROR')
+    
     exclude_uniq = np.sort(np.unique(ica.exclude))[::-1]
     nbad = len(exclude_uniq)
 
@@ -1408,6 +1447,7 @@ def plot_summary_bad_chans(subject_data, reportdir):
     fig.savefig(output_file, dpi=300)
     plt.close(fig)
     return f"summary/bad_chans.png"
+
 
 def plot_artefact_scan(raw, savebase=None):
     """Plot artefact scan.
@@ -1657,3 +1697,38 @@ def print_scan_summary(raw):
         pc = (mod_dur / full_dur) * 100
         s = 'Modality {0} - {1:02f}/{2} seconds rejected     ({3:02f}%)'
         print(s.format(modality, mod_dur, full_dur, pc))
+        
+
+def plot_events(events, event_id, savebase):
+    if events is not None:
+        fig = mne.viz.plot_events(events, event_id=event_id, show=False)
+        figname = savebase.format('events')
+        fig.savefig(figname, dpi=150, transparent=True)
+        plt.close(fig)
+
+        # Return the filename
+        savebase = pathlib.Path(savebase)
+        filebase = savebase.parent.name + "/" + savebase.name
+        fpath = filebase.format('events')
+        return fpath
+    else:
+        return None
+
+
+def plot_custom_figures(custom_figures, savebase):
+    plots = {}
+    if custom_figures is not None and type(custom_figures)==dict:
+        for key in custom_figures.keys():
+            if type(custom_figures[key])==plt.Figure:
+                figname = savebase.format(f'custom_{key}')
+                custom_figures[key].savefig(figname, dpi=150, transparent=True)
+                plt.close(custom_figures[key])
+                # Return the filename
+                savebase_path = pathlib.Path(savebase)
+                filebase = savebase_path.parent.name + "/" + savebase_path.name
+                plots[key] = filebase.format(f'custom_{key}')
+            else:
+                log_or_print(f"Custom figure {key} is not a matplotlib figure. Skipping.")
+    if len(plots)==0:
+        plots = None
+    return plots
