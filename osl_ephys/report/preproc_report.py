@@ -735,8 +735,10 @@ def plot_sensors(raw, savebase=None):
         Path to saved figure.    
     
     """
+    # skip if there is no channel position info
+    if raw.get_montage() is None:
+        return None
     # plot channel types seperately for neuromag306 (3 coils in same location)
-
     if 3012 in np.unique([i['coil_type'] for i in raw.info['chs']]):
         with open(str(Path(__file__).parent.parent) + "/utils/neuromag306_info.yml", 'r') as f:
             channels = yaml.safe_load(f)
@@ -1018,6 +1020,15 @@ def plot_freqbands(raw, savebase=None):
             'EEG': mne.pick_types(raw.info, eeg=True, exclude='bads'),
         }
 
+    # only keep those channel types that have sensor position information.
+    for key, picks in list(channel_types.items()):
+        try:
+            if raw.copy().pick(picks).get_montage() is None:
+                del channel_types[key]
+        except Exception:
+            del channel_types[key]
+
+    
     # Number of subplots, i.e. the number of different channel types in the fif file
     nrows = 0
     for _, c in sorted(channel_types.items()):
@@ -1039,7 +1050,7 @@ def plot_freqbands(raw, savebase=None):
     for name, chan_inds in sorted(channel_types.items()):
         if len(chan_inds) == 0:
             continue
-
+        
         # Plot spectra
         raw_zscore = deepcopy(raw).apply_function(lambda x: ((x - np.mean(x)) / np.std(x)), picks=chan_inds)
         psd = raw_zscore.compute_psd(
